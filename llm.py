@@ -17,36 +17,81 @@ log = logging.getLogger("bot.llm")
 
 _RETRIES = 3
 
+# Резервная модель на случай, если основная упёрлась в лимит бесплатного тарифа
+# (у flash-lite лимиты в разы выше: 15 RPM / 1000 RPD против 10 RPM / 250 RPD)
+_FALLBACK_MODEL = "gemini-2.5-flash-lite"
+
+
+class LLMRateLimitError(RuntimeError):
+    """Исчерпан лимит запросов к LLM (HTTP 429)."""
+
+
+async def _call(session: aiohttp.ClientSession, model: str, messages: list[dict]) -> tuple[int, dict]:
+    headers = {"Authorization": f"Bearer {LLM_API_KEY}"}
+    payload = {"model": model, "messages": messages}
+    async with session.post(
+        f"{LLM_BASE_URL}/chat/completions", json=payload, headers=headers
+    ) as resp:
+        return resp.status, await resp.json(content_type=None)
+
 
 async def llm(messages: list[dict]) -> str:
-    headers = {"Authorization": f"Bearer {LLM_API_KEY}"}
-    payload = {"model": LLM_MODEL, "messages": messages}
     timeout = aiohttp.ClientTimeout(total=120)
+    # Список моделей: основная, затем запасная (если это Gemini и они различаются)
+    models = [LLM_MODEL]
+    if "gemini" in LLM_MODEL and LLM_MODEL != _FALLBACK_MODEL:
+        models.append(_FALLBACK_MODEL)
+
     last_err: Exception | None = None
-    for attempt in range(1, _RETRIES + 1):
-        try:
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.post(
-                    f"{LLM_BASE_URL}/chat/completions", json=payload, headers=headers
-                ) as resp:
-                    status = resp.status
-                    data = await resp.json(content_type=None)
-            if status == 429 or status >= 500:
-                raise RuntimeError(f"LLM HTTP {status}")
-            if "error" in data:
-                msg = data["error"].get("message", str(data["error"]))
-                raise RuntimeError(f"LLM error: {msg}")
-            content = data["choices"][0]["message"]["content"]
-            if not content or not content.strip():
-                raise RuntimeError("LLM вернул пустой ответ")
-            return content
-        except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError, KeyError) as e:
-            last_err = e
-            if attempt < _RETRIES:
-                wait = 2 * attempt
-                log.warning("LLM attempt %d/%d failed (%s), retry in %ds", attempt, _RETRIES, e, wait)
-                await asyncio.sleep(wait)
-    raise RuntimeError(f"LLM недоступен после {_RETRIES} попыток: {last_err}")
+    rate_limited = False
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        for model in models:
+            for attempt in range(1, _RETRIES + 1):
+                try:
+                    status, data = await _call(session, model, messages)
+                    if status == 429:
+                        rate_limited = True
+                        # Лимит на минуту — ждать дольше нет смысла, пробуем запасную модель
+                        raise RuntimeError(f"HTTP 429 (лимит запросов, модель {model})")
+                    if status >= 500:
+                        raise RuntimeError(f"LLM HTTP {status}")
+                    if "error" in data:
+                        msg = data["error"].get("message", str(data["error"]))
+                        raise RuntimeError(f"LLM error: {msg}")
+                    content = data["choices"][0]["message"]["content"]
+                    if not content or not content.strip():
+                        raise RuntimeError("LLM вернул пустой ответ")
+                    return content
+                except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError, KeyError) as e:
+                    last_err = e
+                    is_429 = "429" in str(e)
+                    if is_429:
+                        # Минутный лимит: сразу переходим к следующей модели
+                        log.warning("Модель %s: лимит 429, переключаюсь на запасную", model)
+                        break
+                    if attempt < _RETRIES:
+                        wait = 2 * attempt
+                        log.warning(
+                            "LLM %s: попытка %d/%d не удалась (%s), повтор через %dс",
+                            model, attempt, _RETRIES, e, wait,
+                        )
+                        await asyncio.sleep(wait)
+
+    if rate_limited:
+        raise LLMRateLimitError(
+            "лимит бесплатных запросов Gemini исчерпан (минутный или дневной)"
+        )
+    raise RuntimeError(f"LLM недоступен: {last_err}")
+
+
+def friendly_error(e: Exception, action: str = "обработать запрос") -> str:
+    """Человекочитаемое сообщение об ошибке LLM (без трейсбеков)."""
+    if isinstance(e, LLMRateLimitError) or "429" in str(e):
+        return (
+            "⏳ Слишком много запросов подряд — бесплатный лимит Gemini на минуту исчерпан.\n"
+            "Подожди минутку и попробуй ещё раз 🙏"
+        )
+    return f"😔 Не получилось {action}. Попробуй ещё раз чуть позже."
 
 
 def parse_llm_json(text: str) -> dict:

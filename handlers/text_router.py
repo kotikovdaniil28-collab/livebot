@@ -12,7 +12,7 @@ from aiogram.types import Message
 import db as store
 from config import TZ
 from handlers.kitchen import send_recipes
-from llm import ROUTER_PROMPT, llm, parse_llm_json
+from llm import LLMRateLimitError, ROUTER_PROMPT, llm, parse_llm_json
 
 log = logging.getLogger("bot.text")
 
@@ -33,9 +33,21 @@ async def on_text(message: Message) -> None:
             ]
         )
         data = parse_llm_json(raw)
-    except Exception as e:
+    except LLMRateLimitError:
+        await message.answer(
+            "⏳ <b>Слишком много запросов подряд</b>\n\n"
+            "Бесплатный лимит Gemini на минуту исчерпан.\n"
+            "Подожди минутку и напиши ещё раз 🙏",
+            parse_mode="HTML",
+        )
+        return
+    except Exception:
         log.exception("router failed")
-        await message.answer(f"Что-то пошло не так 😢 ({e})")
+        await message.answer(
+            "😔 <b>Не получилось обработать сообщение</b>\n\n"
+            "Попробуй ещё раз чуть позже — или воспользуйся кнопками меню внизу.",
+            parse_mode="HTML",
+        )
         return
 
     intent = data.get("intent")

@@ -26,17 +26,48 @@ WELCOME_IMG = ASSETS_DIR / "welcome.png"
 FEATURES_IMG = ASSETS_DIR / "features.png"
 
 HELP_TEXT = (
-    "<b>Пиши обычными словами — я пойму:</b>\n"
-    "• «напомни завтра в 9 позвонить маме»\n"
-    "• «купить молоко и хлеб»\n"
-    "• «кофе 250» — запишу трату\n"
-    "• «в холодильнике курица до 25.07»\n"
-    "• «курица, картошка» или 📸 фото еды — подберу рецепты\n\n"
-    "<b>Кнопки внизу</b> — задачи, покупки, холодильник и всё остальное.\n\n"
-    "<b>Настройка:</b> /city Москва — погода, /time 07:30 — утренний брифинг, "
-    "/eveningtime 21:00 — вечерний итог\n"
-    "<b>Ещё:</b> /share — общий список покупок на двоих, /mood — дневник настроения"
+    "💬 <b>Просто пиши обычными словами — я пойму</b>\n"
+    "\n"
+    "📌 <i>«напомни завтра в 9 позвонить маме»</i>\n"
+    "🛒 <i>«купить молоко и хлеб»</i>\n"
+    "💸 <i>«кофе 250»</i> — запишу трату\n"
+    "🧊 <i>«в холодильнике курица до 25.07»</i>\n"
+    "👨‍🍳 <i>«курица, картошка»</i> или 📸 фото еды — подберу рецепты\n"
+    "\n"
+    "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
+    "\n"
+    "⌨️ <b>Кнопки внизу</b> — задачи, покупки, холодильник, привычки, расходы и меню недели\n"
+    "\n"
+    "⚙️ <b>Настройка</b>\n"
+    "• /city Москва — погода в брифинге\n"
+    "• /time 07:30 — утренний брифинг\n"
+    "• /eveningtime 21:00 — вечерний итог\n"
+    "\n"
+    "✨ <b>Ещё</b>\n"
+    "• /share — общий список покупок на двоих\n"
+    "• /mood — дневник настроения\n"
+    "• /app — мини-апп со всем на одном экране"
 )
+
+WELCOME_CAPTION = (
+    "👋 <b>Привет! Я — твой Личный Ассистент Дня</b>\n"
+    "\n"
+    "Помогу ничего не забыть: задачи, покупки, рецепты,\n"
+    "расходы и привычки — всё в одном чате.\n"
+    "\n"
+    "🌅 Утром — брифинг с погодой и планами\n"
+    "🌙 Вечером — итоги дня и оценка настроения"
+)
+
+
+def _webapp_kb() -> InlineKeyboardMarkup | None:
+    if not WEBAPP_URL:
+        return None
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🚀 Открыть мини-апп", web_app=WebAppInfo(url=WEBAPP_URL))]
+        ]
+    )
 
 
 @router.message(CommandStart())
@@ -45,9 +76,12 @@ async def cmd_start(message: Message) -> None:
     if WELCOME_IMG.exists():
         await message.answer_photo(
             FSInputFile(WELCOME_IMG),
-            caption="<b>Привет! Я — Личный Ассистент Дня</b> 👋",
+            caption=WELCOME_CAPTION,
             parse_mode="HTML",
+            reply_markup=_webapp_kb(),
         )
+    else:
+        await message.answer(WELCOME_CAPTION, parse_mode="HTML", reply_markup=_webapp_kb())
     await message.answer(HELP_TEXT, reply_markup=main_menu(), parse_mode="HTML")
 
 

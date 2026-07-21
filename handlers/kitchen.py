@@ -9,7 +9,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 import db as store
 from handlers.shopping import missing_keyboard
-from llm import MENU_PROMPT, RECIPES_PROMPT, VISION_PROMPT, llm, parse_llm_json
+from llm import MENU_PROMPT, RECIPES_PROMPT, VISION_PROMPT, friendly_error, llm, parse_llm_json
 
 log = logging.getLogger("bot.kitchen")
 
@@ -37,7 +37,7 @@ async def send_recipes(message: Message, products: list[str], extra: str = "") -
             await note.edit_text(text)
     except Exception as e:
         log.exception("recipes failed")
-        await note.edit_text(f"Не получилось подобрать рецепты 😢 ({e})")
+        await note.edit_text(friendly_error(e, "подобрать рецепты"))
 
 
 @router.message(F.photo)
@@ -68,7 +68,7 @@ async def on_photo(message: Message, bot: Bot) -> None:
             await note.edit_text(text)
     except Exception as e:
         log.exception("photo handler failed")
-        await note.edit_text(f"Не получилось разобрать фото 😢 ({e})")
+        await note.edit_text(friendly_error(e, "разобрать фото"))
 
 
 # --- виртуальный холодильник ---------------------------------------------------
@@ -162,4 +162,4 @@ async def cmd_menu(message: Message) -> None:
             await note.edit_text(text)
     except Exception as e:
         log.exception("menu failed")
-        await note.edit_text(f"Не получилось составить меню 😢 ({e})")
+        await note.edit_text(friendly_error(e, "составить меню"))
