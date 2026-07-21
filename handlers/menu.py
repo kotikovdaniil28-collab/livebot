@@ -86,15 +86,18 @@ def more_menu() -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
+                InlineKeyboardButton(text="🧊 Холодильник", callback_data="more:fridge"),
+                InlineKeyboardButton(text="📅 Меню недели", callback_data="more:weekmenu"),
+            ],
+            [
                 InlineKeyboardButton(text="🔁 Привычки", callback_data="more:habits"),
                 InlineKeyboardButton(text="💸 Расходы", callback_data="more:spent"),
             ],
             [
-                InlineKeyboardButton(text="📅 Меню недели", callback_data="more:weekmenu"),
                 InlineKeyboardButton(text="☀️ Брифинг", callback_data="more:digest"),
+                InlineKeyboardButton(text="🌙 Итог дня", callback_data="more:evening"),
             ],
             [
-                InlineKeyboardButton(text="🌙 Итог дня", callback_data="more:evening"),
                 InlineKeyboardButton(text="❓ Помощь", callback_data="more:help"),
             ],
         ]
@@ -112,7 +115,10 @@ async def cb_more(callback: CallbackQuery) -> None:
     action = callback.data.split(":", 1)[1]
     await safe_answer(callback)
     msg = callback.message
-    if action == "habits":
+    if action == "fridge":
+        text, kb = kitchen.fridge_view(msg.chat.id)
+        await msg.answer(text, reply_markup=kb, parse_mode="HTML")
+    elif action == "habits":
         await life.cmd_habits(msg)
     elif action == "spent":
         await life.cmd_spent(msg)

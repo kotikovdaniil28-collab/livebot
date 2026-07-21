@@ -12,7 +12,9 @@ from aiogram.types import Message
 
 import db as store
 from config import TZ
+from handlers.keyboards import main_menu
 from handlers.kitchen import send_recipes
+from handlers.ui import MOOD_IMGS, answer_pretty
 from llm import LLMRateLimitError, ROUTER_PROMPT, llm, parse_llm_json, transcribe
 
 log = logging.getLogger("bot.text")
@@ -224,7 +226,12 @@ async def process_text(message: Message, text: str) -> None:
     # --- обычный ответ ---
     reply = data.get("reply") or "Принял! Чем ещё помочь? 😊"
     remember(reply)
-    await message.answer(reply)
+    mood_img = MOOD_IMGS.get(data.get("mood") or "")
+    if mood_img is not None:
+        await answer_pretty(message, reply, mood_img, parse_mode=None)
+    else:
+        # заодно обновляем reply-клавиатуру у тех, у кого закэширована старая
+        await message.answer(reply, reply_markup=main_menu())
 
 
 @router.message(F.voice)

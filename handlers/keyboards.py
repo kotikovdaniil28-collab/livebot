@@ -21,10 +21,14 @@ MENU_BUTTONS = {
 
 
 def main_menu() -> ReplyKeyboardMarkup:
+    # Один компактный ряд: главное всегда под рукой, остальное — в «Ещё»
     return ReplyKeyboardMarkup(
         keyboard=[
-            [KeyboardButton(text=BTN_TASKS), KeyboardButton(text=BTN_LIST)],
-            [KeyboardButton(text=BTN_FRIDGE), KeyboardButton(text=BTN_MORE)],
+            [
+                KeyboardButton(text=BTN_TASKS),
+                KeyboardButton(text=BTN_LIST),
+                KeyboardButton(text=BTN_MORE),
+            ],
         ],
         resize_keyboard=True,
         input_field_placeholder="Напиши задачу, трату или продукты…",

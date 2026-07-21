@@ -19,6 +19,14 @@ MORNING_IMG = ASSETS_DIR / "morning.png"
 EVENING_IMG = ASSETS_DIR / "evening.png"
 EXPIRING_IMG = ASSETS_DIR / "expiring.png"
 
+# Картинки-настроения бота для живых chat-ответов (ключи = поле "mood" из LLM)
+MOOD_IMGS = {
+    "laugh": ASSETS_DIR / "mood_laugh.png",
+    "cool": ASSETS_DIR / "mood_cool.png",
+    "think": ASSETS_DIR / "mood_think.png",
+    "shock": ASSETS_DIR / "mood_shock.png",
+}
+
 _CAPTION_LIMIT = 1024
 
 
@@ -27,17 +35,18 @@ async def answer_pretty(
     text: str,
     img: Path,
     kb: InlineKeyboardMarkup | None = None,
+    parse_mode: str | None = "HTML",
 ) -> None:
     """Ответ картинкой с подписью; при длинном тексте или ошибке — фолбэк на текст."""
     try:
         if img.exists() and len(text) <= _CAPTION_LIMIT:
             await message.answer_photo(
-                FSInputFile(img), caption=text, parse_mode="HTML", reply_markup=kb
+                FSInputFile(img), caption=text, parse_mode=parse_mode, reply_markup=kb
             )
             return
     except Exception:
         log.warning("pretty answer failed, falling back to text", exc_info=True)
-    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await message.answer(text, reply_markup=kb, parse_mode=parse_mode)
 
 
 async def send_pretty(
