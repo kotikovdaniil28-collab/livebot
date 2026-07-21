@@ -60,12 +60,27 @@ async def _task_reminders(bot: Bot, now_str: str) -> None:
                     c.execute("UPDATE tasks SET reminded = 1 WHERE id = ?", (t["id"],))
 
 
+def _is_due(target: str, hhmm: str, window_min: int = 180) -> bool:
+    """Время наступило: сейчас >= target, но не позже, чем target + окно.
+
+    Раньше сравнивали строку минута-в-минуту — если бот был выключен
+    в эту минуту, дайджест пропадал на весь день.
+    """
+    try:
+        th, tm = int(target[:2]), int(target[3:5])
+        nh, nm = int(hhmm[:2]), int(hhmm[3:5])
+    except (ValueError, IndexError):
+        return False
+    diff = (nh * 60 + nm) - (th * 60 + tm)
+    return 0 <= diff <= window_min
+
+
 async def _morning_digests(bot: Bot, hhmm: str, today: str) -> None:
     with store.db() as c:
-        users = c.execute(
-            "SELECT * FROM users WHERE brief_time = ? AND last_digest != ?",
-            (hhmm, today),
+        rows = c.execute(
+            "SELECT * FROM users WHERE last_digest != ?", (today,)
         ).fetchall()
+    users = [u for u in rows if _is_due(u["brief_time"] or "07:30", hhmm)]
     for u in users:
         try:
             await send_pretty(bot, u["chat_id"], await build_digest(u["chat_id"]), MORNING_IMG)
@@ -77,10 +92,10 @@ async def _morning_digests(bot: Bot, hhmm: str, today: str) -> None:
 
 async def _evening_digests(bot: Bot, hhmm: str, today: str) -> None:
     with store.db() as c:
-        users = c.execute(
-            "SELECT * FROM users WHERE evening_time = ? AND last_evening != ?",
-            (hhmm, today),
+        rows = c.execute(
+            "SELECT * FROM users WHERE last_evening != ?", (today,)
         ).fetchall()
+    users = [u for u in rows if _is_due(u["evening_time"] or "21:00", hhmm)]
     for u in users:
         try:
             await send_pretty(
@@ -94,10 +109,11 @@ async def _evening_digests(bot: Bot, hhmm: str, today: str) -> None:
 
 async def _habit_reminders(bot: Bot, hhmm: str, today: str) -> None:
     with store.db() as c:
-        habits = c.execute(
-            "SELECT * FROM habits WHERE remind_time = ? AND last_remind != ?",
-            (hhmm, today),
+        rows = c.execute(
+            "SELECT * FROM habits WHERE remind_time != '' AND last_remind != ?",
+            (today,),
         ).fetchall()
+    habits = [h for h in rows if _is_due(h["remind_time"], hhmm, window_min=60)]
     for h in habits:
         try:
             if not store.habit_done_today(h["id"]):

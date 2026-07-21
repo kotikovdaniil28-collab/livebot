@@ -1,10 +1,11 @@
 """Обработка кнопок главного reply-меню. Регистрируется ДО text_router."""
 
 from aiogram import F, Router
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 import db as store
 from handlers import kitchen, life, shopping, tasks
+from handlers.cb_utils import safe_answer
 from handlers.keyboards import (
     BTN_DIGEST,
     BTN_EVENING,
@@ -13,6 +14,7 @@ from handlers.keyboards import (
     BTN_HELP,
     BTN_LIST,
     BTN_MENU,
+    BTN_MORE,
     BTN_SPENT,
     BTN_TASKS,
 )
@@ -78,3 +80,47 @@ async def menu_help(message: Message) -> None:
     from handlers.basic import HELP_TEXT
 
     await message.answer(HELP_TEXT, parse_mode="HTML")
+
+
+def more_menu() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="🔁 Привычки", callback_data="more:habits"),
+                InlineKeyboardButton(text="💸 Расходы", callback_data="more:spent"),
+            ],
+            [
+                InlineKeyboardButton(text="📅 Меню недели", callback_data="more:weekmenu"),
+                InlineKeyboardButton(text="☀️ Брифинг", callback_data="more:digest"),
+            ],
+            [
+                InlineKeyboardButton(text="🌙 Итог дня", callback_data="more:evening"),
+                InlineKeyboardButton(text="❓ Помощь", callback_data="more:help"),
+            ],
+        ]
+    )
+
+
+@router.message(F.text == BTN_MORE)
+async def menu_more(message: Message) -> None:
+    store.upsert_user(message.chat.id)
+    await message.answer("Что показать?", reply_markup=more_menu())
+
+
+@router.callback_query(F.data.startswith("more:"))
+async def cb_more(callback: CallbackQuery) -> None:
+    action = callback.data.split(":", 1)[1]
+    await safe_answer(callback)
+    msg = callback.message
+    if action == "habits":
+        await life.cmd_habits(msg)
+    elif action == "spent":
+        await life.cmd_spent(msg)
+    elif action == "weekmenu":
+        await kitchen.cmd_menu(msg)
+    elif action == "digest":
+        await menu_digest(msg)
+    elif action == "evening":
+        await menu_evening(msg)
+    elif action == "help":
+        await menu_help(msg)
