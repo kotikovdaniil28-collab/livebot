@@ -18,6 +18,16 @@ from services import build_digest, build_evening
 log = logging.getLogger("bot.scheduler")
 
 
+def _next_remind(remind_at: str, repeat: str) -> str:
+    """Следующее срабатывание повторяющегося напоминания."""
+    dt = datetime.fromisoformat(remind_at)
+    now = datetime.now(TZ).replace(tzinfo=None) if dt.tzinfo is None else datetime.now(TZ)
+    step = {"daily": timedelta(days=1), "weekly": timedelta(weeks=1), "monthly": timedelta(days=30)}[repeat]
+    while dt <= now:
+        dt += step
+    return dt.strftime("%Y-%m-%dT%H:%M")
+
+
 async def _task_reminders(bot: Bot, now_str: str) -> None:
     with store.db() as c:
         due = c.execute(
@@ -26,17 +36,27 @@ async def _task_reminders(bot: Bot, now_str: str) -> None:
             (now_str,),
         ).fetchall()
     for t in due:
+        repeat = t["repeat"] if "repeat" in t.keys() else ""
         try:
+            prefix = "🔁 " if repeat else "⏰ "
             await bot.send_message(
                 t["chat_id"],
-                f"⏰ Напоминание: {t['text']}",
-                reply_markup=reminder_keyboard(t["id"]),
+                f"{prefix}Напоминание: {t['text']}",
+                reply_markup=None if repeat else reminder_keyboard(t["id"]),
             )
         except Exception:
             log.exception("task reminder failed chat=%s", t["chat_id"])
         finally:
             with store.db() as c:
-                c.execute("UPDATE tasks SET reminded = 1 WHERE id = ?", (t["id"],))
+                if repeat:
+                    # повторяющееся: переносим на следующий раз, не закрываем
+                    try:
+                        nxt = _next_remind(t["remind_at"], repeat)
+                        c.execute("UPDATE tasks SET remind_at = ? WHERE id = ?", (nxt, t["id"]))
+                    except Exception:
+                        c.execute("UPDATE tasks SET reminded = 1 WHERE id = ?", (t["id"],))
+                else:
+                    c.execute("UPDATE tasks SET reminded = 1 WHERE id = ?", (t["id"],))
 
 
 async def _morning_digests(bot: Bot, hhmm: str, today: str) -> None:

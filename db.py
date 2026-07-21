@@ -91,6 +91,13 @@ def init_db() -> None:
                 chat_id INTEGER PRIMARY KEY,
                 items_json TEXT DEFAULT '[]'
             );
+            CREATE TABLE IF NOT EXISTS chat_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id INTEGER NOT NULL,
+                role TEXT NOT NULL,
+                content TEXT NOT NULL,
+                ts TEXT NOT NULL
+            );
             """
         )
     # миграция старой базы (добавляем недостающие колонки, если бот обновился)
@@ -102,9 +109,15 @@ def init_db() -> None:
             c.execute("ALTER TABLE users ADD COLUMN last_evening TEXT DEFAULT ''")
         if "list_owner" not in cols:
             c.execute("ALTER TABLE users ADD COLUMN list_owner INTEGER DEFAULT 0")
+        if "budget" not in cols:
+            c.execute("ALTER TABLE users ADD COLUMN budget REAL DEFAULT 0")
+        if "budget_warned" not in cols:
+            c.execute("ALTER TABLE users ADD COLUMN budget_warned TEXT DEFAULT ''")
         tcols = {r["name"] for r in c.execute("PRAGMA table_info(tasks)")}
         if "done_at" not in tcols:
             c.execute("ALTER TABLE tasks ADD COLUMN done_at TEXT DEFAULT ''")
+        if "repeat" not in tcols:
+            c.execute("ALTER TABLE tasks ADD COLUMN repeat TEXT DEFAULT ''")
 
 
 # --- users -----------------------------------------------------------------
@@ -114,7 +127,10 @@ def upsert_user(chat_id: int) -> None:
         c.execute("INSERT OR IGNORE INTO users (chat_id) VALUES (?)", (chat_id,))
 
 
-USER_FIELDS = {"city", "brief_time", "evening_time", "last_digest", "last_evening", "list_owner"}
+USER_FIELDS = {
+    "city", "brief_time", "evening_time", "last_digest", "last_evening",
+    "list_owner", "budget", "budget_warned",
+}
 
 
 def set_user(chat_id: int, field: str, value) -> None:
@@ -130,13 +146,31 @@ def get_user(chat_id: int) -> sqlite3.Row | None:
 
 # --- tasks -----------------------------------------------------------------
 
-def add_task(chat_id: int, text: str, remind_at: str | None) -> int:
+def add_task(chat_id: int, text: str, remind_at: str | None, repeat: str = "") -> int:
     with db() as c:
         cur = c.execute(
-            "INSERT INTO tasks (chat_id, text, remind_at, created_at) VALUES (?, ?, ?, ?)",
-            (chat_id, text, remind_at, now_iso()),
+            "INSERT INTO tasks (chat_id, text, remind_at, repeat, created_at) VALUES (?, ?, ?, ?, ?)",
+            (chat_id, text, remind_at, repeat, now_iso()),
         )
         return cur.lastrowid
+
+
+def delete_task(chat_id: int, task_id: int) -> bool:
+    with db() as c:
+        cur = c.execute(
+            "DELETE FROM tasks WHERE id = ? AND chat_id = ?", (task_id, chat_id)
+        )
+        return cur.rowcount > 0
+
+
+def delete_last_expense(chat_id: int) -> sqlite3.Row | None:
+    with db() as c:
+        row = c.execute(
+            "SELECT * FROM expenses WHERE chat_id = ? ORDER BY id DESC LIMIT 1", (chat_id,)
+        ).fetchone()
+        if row:
+            c.execute("DELETE FROM expenses WHERE id = ?", (row["id"],))
+        return row
 
 
 def open_tasks(chat_id: int) -> list[sqlite3.Row]:
@@ -282,10 +316,36 @@ def habit_done_today(habit_id: int) -> bool:
 
 
 def habit_streak(habit_id: int) -> int:
+    """Текущая серия: сколько дней подряд (включая сегодня или вчера) привычка выполнялась."""
+    from datetime import timedelta
     with db() as c:
-        return c.execute(
-            "SELECT COUNT(*) AS n FROM habit_logs WHERE habit_id = ?", (habit_id,)
+        dates = {
+            r["date"]
+            for r in c.execute("SELECT date FROM habit_logs WHERE habit_id = ?", (habit_id,))
+        }
+    if not dates:
+        return 0
+    day = datetime.now(TZ).date()
+    # серия не рвётся, если сегодня ещё не отмечено, но вчера было
+    if day.strftime("%Y-%m-%d") not in dates:
+        day = day - timedelta(days=1)
+    streak = 0
+    while day.strftime("%Y-%m-%d") in dates:
+        streak += 1
+        day = day - timedelta(days=1)
+    return streak
+
+
+def habit_month_stats(habit_id: int) -> tuple[int, int]:
+    """(выполнено дней, прошло дней) за текущий месяц."""
+    now = datetime.now(TZ)
+    month_start = now.strftime("%Y-%m-01")
+    with db() as c:
+        done = c.execute(
+            "SELECT COUNT(*) AS n FROM habit_logs WHERE habit_id = ? AND date >= ?",
+            (habit_id, month_start),
         ).fetchone()["n"]
+    return done, now.day
 
 
 # --- fridge (виртуальный холодильник + сроки годности) -----------------------
@@ -385,3 +445,60 @@ def pop_pending(chat_id: int) -> list[str]:
         return json.loads(row["items_json"])
     except Exception:
         return []
+
+
+# --- chat history (память диалога для LLM-роутера) ----------------------------
+
+def add_history(chat_id: int, role: str, content: str) -> None:
+    with db() as c:
+        c.execute(
+            "INSERT INTO chat_history (chat_id, role, content, ts) VALUES (?, ?, ?, ?)",
+            (chat_id, role, content[:1000], now_iso()),
+        )
+        # держим только последние 20 записей на чат
+        c.execute(
+            "DELETE FROM chat_history WHERE chat_id = ? AND id NOT IN "
+            "(SELECT id FROM chat_history WHERE chat_id = ? ORDER BY id DESC LIMIT 20)",
+            (chat_id, chat_id),
+        )
+
+
+def get_history(chat_id: int, limit: int = 10) -> list[dict]:
+    """Последние сообщения диалога в формате OpenAI messages (старые → новые)."""
+    with db() as c:
+        rows = c.execute(
+            "SELECT role, content FROM chat_history WHERE chat_id = ? ORDER BY id DESC LIMIT ?",
+            (chat_id, limit),
+        ).fetchall()
+    return [{"role": r["role"], "content": r["content"]} for r in reversed(rows)]
+
+
+# --- expenses: суммы по дням и бюджет ------------------------------------------
+
+def expenses_by_day(chat_id: int, days: int = 7) -> list[tuple[str, float]]:
+    """[(YYYY-MM-DD, сумма), ...] за последние N дней (включая нулевые дни)."""
+    from datetime import timedelta
+    now = datetime.now(TZ)
+    date_from = (now - timedelta(days=days - 1)).strftime("%Y-%m-%d")
+    with db() as c:
+        rows = c.execute(
+            "SELECT date, SUM(amount) AS total FROM expenses "
+            "WHERE chat_id = ? AND date >= ? GROUP BY date",
+            (chat_id, date_from),
+        ).fetchall()
+    totals = {r["date"]: r["total"] for r in rows}
+    out = []
+    for i in range(days - 1, -1, -1):
+        d = (now - timedelta(days=i)).strftime("%Y-%m-%d")
+        out.append((d, round(totals.get(d, 0), 2)))
+    return out
+
+
+def month_spent(chat_id: int) -> float:
+    month_start = datetime.now(TZ).strftime("%Y-%m-01")
+    with db() as c:
+        row = c.execute(
+            "SELECT COALESCE(SUM(amount), 0) AS total FROM expenses WHERE chat_id = ? AND date >= ?",
+            (chat_id, month_start),
+        ).fetchone()
+    return round(row["total"], 2)

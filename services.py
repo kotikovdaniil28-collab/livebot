@@ -98,6 +98,12 @@ async def build_digest(chat_id: int) -> str:
     if shopping:
         lines.append(f"🛒 В списке покупок: {len(shopping)} поз.")
 
+    if user and user["budget"]:
+        spent = store.month_spent(chat_id)
+        left = user["budget"] - spent
+        icon = "💰" if left >= 0 else "🚨"
+        lines.append(f"{icon} Бюджет: осталось {left:g} из {user['budget']:g}")
+
     news = await get_news()
     if news:
         lines.append("\n<b>📰 Новости</b>")
@@ -127,14 +133,26 @@ def build_evening(chat_id: int) -> str:
     if not done and not open_:
         lines.append("Задач сегодня не было — день без суеты 🙂")
 
-    extras = []
     habits = store.get_habits(chat_id)
     if habits:
         done_h = sum(1 for h in habits if store.habit_done_today(h["id"]))
-        extras.append(f"🔁 {done_h}/{len(habits)}")
+        lines.append(f"\n<b>🔁 Привычки: {done_h}/{len(habits)}</b>")
+        for h in habits:
+            streak = store.habit_streak(h["id"])
+            month_done, month_days = store.habit_month_stats(h["id"])
+            pct = round(month_done / month_days * 100) if month_days else 0
+            mark = "✅" if store.habit_done_today(h["id"]) else "⬜"
+            fire = f" 🔥{streak}" if streak >= 2 else ""
+            lines.append(f"{mark} {escape(h['name'])}{fire} · {pct}% за месяц")
+
+    extras = []
     expenses = store.expenses_since(chat_id, store.today())
     if expenses:
-        extras.append(f"💸 {sum(e['amount'] for e in expenses):g}")
+        extras.append(f"💸 За сегодня: {sum(e['amount'] for e in expenses):g}")
+    user = store.get_user(chat_id)
+    if user and user["budget"]:
+        left = user["budget"] - store.month_spent(chat_id)
+        extras.append(f"💰 Остаток бюджета: {left:g}")
     if extras:
         lines.append("\n" + " · ".join(extras))
 

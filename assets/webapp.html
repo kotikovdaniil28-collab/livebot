@@ -73,6 +73,22 @@
   .money{font-variant-numeric:tabular-nums;font-weight:600;flex-shrink:0}
   .clear{width:100%;padding:10px;color:var(--bad);font-size:13px;font-weight:600;
          border-top:1px solid var(--line)}
+  /* expense chart */
+  .chart{display:flex;align-items:flex-end;gap:6px;height:96px;padding:14px 14px 6px}
+  .chart .col{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0}
+  .chart .bar{width:100%;max-width:34px;border-radius:6px 6px 2px 2px;background:var(--accent-dim);
+        position:relative;transition:height .3s ease}
+  .chart .bar.hot{background:var(--accent)}
+  .chart .lbl{font-size:9px;color:var(--dim);white-space:nowrap}
+  .chart .val{font-size:9px;color:var(--dim);font-variant-numeric:tabular-nums;white-space:nowrap}
+  /* budget bar */
+  .budget{padding:12px 14px}
+  .budget .top{display:flex;justify-content:space-between;font-size:12px;color:var(--dim);margin-bottom:6px}
+  .budget .top b{color:var(--text)}
+  .bbar{height:8px;border-radius:99px;background:var(--card2);overflow:hidden}
+  .bbar i{display:block;height:100%;border-radius:99px;background:var(--good);transition:width .3s ease}
+  .bbar i.warn{background:var(--warn)}
+  .bbar i.bad{background:var(--bad)}
   #err{display:none;padding:24px 16px;text-align:center;color:var(--dim);font-size:14px}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
@@ -124,6 +140,15 @@
     <div class="strip" style="grid-template-columns:1fr 1fr">
       <div class="stat"><b id="e-today">0₽</b><span>сегодня</span></div>
       <div class="stat"><b id="e-week">0₽</b><span>за 7 дней</span></div>
+    </div>
+    <div class="card" id="exp-budget" style="margin-top:8px;display:none">
+      <div class="budget">
+        <div class="top"><span>Бюджет месяца</span><b id="b-left"></b></div>
+        <div class="bbar"><i id="b-fill" style="width:0%"></i></div>
+      </div>
+    </div>
+    <div class="card" style="margin-top:8px">
+      <div class="chart" id="exp-chart"></div>
     </div>
     <div class="card" id="exp-list" style="margin-top:8px"></div>
     <form class="addbar" data-act="expense_add">
@@ -206,6 +231,29 @@
     // --- expenses
     document.getElementById('e-today').textContent = fmt(D.expenses.today)+'₽';
     document.getElementById('e-week').textContent = fmt(D.expenses.week)+'₽';
+    // бюджет месяца
+    var bCard = document.getElementById('exp-budget');
+    if(D.expenses.budget > 0){
+      bCard.style.display='block';
+      var left = D.expenses.budget - D.expenses.month;
+      var pct = Math.min(100, Math.round(D.expenses.month / D.expenses.budget * 100));
+      document.getElementById('b-left').textContent =
+        (left >= 0 ? 'осталось '+fmt(left)+'₽' : 'превышен на '+fmt(-left)+'₽');
+      var fill = document.getElementById('b-fill');
+      fill.style.width = pct+'%';
+      fill.className = pct >= 100 ? 'bad' : pct >= 80 ? 'warn' : '';
+    } else { bCard.style.display='none'; }
+    // график за 7 дней
+    var daily = D.expenses.daily || [];
+    var maxV = Math.max.apply(null, daily.map(function(d){return d.total;}).concat([1]));
+    var todayIdx = daily.length - 1;
+    document.getElementById('exp-chart').innerHTML = daily.map(function(d, i){
+      var h = d.total > 0 ? Math.max(8, Math.round(d.total / maxV * 62)) : 3;
+      return '<div class="col">'+
+        '<span class="val">'+(d.total>0?fmt(d.total):'')+'</span>'+
+        '<div class="bar'+(i===todayIdx?' hot':'')+'" style="height:'+h+'px"></div>'+
+        '<span class="lbl">'+esc(d.date)+'</span></div>';
+    }).join('');
     rows(document.getElementById('exp-list'), D.expenses.recent, function(e){
       return '<div class="row"><span class="grow">'+esc(e.item)+' <span class="sub">'+esc(e.date)+'</span></span>'+
         '<span class="money">'+fmt(e.amount)+'₽</span></div>';

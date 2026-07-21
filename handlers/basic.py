@@ -29,10 +29,13 @@ HELP_TEXT = (
     "💬 <b>Просто пиши обычными словами — я пойму</b>\n"
     "\n"
     "📌 <i>«напомни завтра в 9 позвонить маме»</i>\n"
-    "🛒 <i>«купить молоко и хлеб»</i>\n"
-    "💸 <i>«кофе 250»</i> — запишу трату\n"
+    "🔁 <i>«напоминай каждый день в 8 пить воду»</i>\n"
+    "🛒 <i>«купить молоко и хлеб»</i> · <i>«молоко уже купил»</i>\n"
+    "💸 <i>«кофе 250»</i> · <i>«удали последнюю трату»</i>\n"
+    "✅ <i>«позвонил маме»</i> — закрою задачу\n"
     "🧊 <i>«в холодильнике курица до 25.07»</i>\n"
     "👨‍🍳 <i>«курица, картошка»</i> или 📸 фото еды — подберу рецепты\n"
+    "🎙 Голосовые тоже понимаю!\n"
     "\n"
     "▬▬▬▬▬▬▬▬▬▬▬▬▬▬▬\n"
     "\n"
@@ -42,6 +45,7 @@ HELP_TEXT = (
     "• /city Москва — погода в брифинге\n"
     "• /time 07:30 — утренний брифинг\n"
     "• /eveningtime 21:00 — вечерний итог\n"
+    "• /budget 30000 — лимит трат на месяц\n"
     "\n"
     "✨ <b>Ещё</b>\n"
     "• /share — общий список покупок на двоих\n"
@@ -152,6 +156,45 @@ async def cmd_eveningtime(message: Message, command: CommandObject) -> None:
         return
     store.set_user(message.chat.id, "evening_time", t)
     await message.answer(f"Вечерний итог будет приходить в {t} ✅")
+
+
+@router.message(Command("budget"))
+async def cmd_budget(message: Message, command: CommandObject) -> None:
+    store.upsert_user(message.chat.id)
+    args = (command.args or "").strip()
+    if not args:
+        user = store.get_user(message.chat.id)
+        budget = user["budget"] if user else 0
+        if not budget:
+            await message.answer(
+                "Бюджет не задан. Установи лимит трат на месяц: /budget 30000\n"
+                "Отключить: /budget 0"
+            )
+            return
+        spent = store.month_spent(message.chat.id)
+        left = budget - spent
+        pct = round(spent / budget * 100) if budget else 0
+        await message.answer(
+            f"💰 <b>Бюджет месяца:</b> {budget:g}\n"
+            f"Потрачено: {spent:g} ({pct}%)\n"
+            f"Осталось: {left:g}",
+            parse_mode="HTML",
+        )
+        return
+    try:
+        value = float(args.replace(",", ".").replace(" ", ""))
+    except ValueError:
+        await message.answer("Формат: /budget 30000 (0 — отключить)")
+        return
+    store.set_user(message.chat.id, "budget", max(0, value))
+    store.set_user(message.chat.id, "budget_warned", "")
+    if value <= 0:
+        await message.answer("Бюджет отключён ✅")
+    else:
+        await message.answer(
+            f"💰 Бюджет месяца: {value:g} ✅\n"
+            "Предупрежу при 80% и при превышении. Остаток — в утреннем брифинге."
+        )
 
 
 @router.message(Command("digest"))

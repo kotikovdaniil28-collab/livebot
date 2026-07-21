@@ -88,9 +88,17 @@ def _overview(chat_id: int) -> dict:
 
     exp_today = db.expenses_since(chat_id, today)
     exp_week = db.expenses_since(chat_id, week_ago)
+    user = db.get_user(chat_id)
+    budget = (user["budget"] or 0) if user else 0
     expenses = {
         "today": round(sum(r["amount"] for r in exp_today), 2),
         "week": round(sum(r["amount"] for r in exp_week), 2),
+        "month": db.month_spent(chat_id),
+        "budget": budget,
+        "daily": [
+            {"date": _fmt_date(d), "total": total}
+            for d, total in db.expenses_by_day(chat_id, 7)
+        ],
         "recent": [
             {"item": r["item"], "amount": r["amount"], "date": _fmt_date(r["date"])}
             for r in list(reversed(exp_week))[:10]

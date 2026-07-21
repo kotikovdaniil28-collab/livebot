@@ -104,6 +104,28 @@ async def llm(messages: list[dict]) -> str:
     raise RuntimeError(f"LLM недоступен: {last_err}")
 
 
+WHISPER_MODEL = "whisper-large-v3"
+
+
+async def transcribe(audio: bytes, filename: str = "voice.ogg") -> str:
+    """Распознаёт речь через Groq Whisper. Возвращает текст."""
+    timeout = aiohttp.ClientTimeout(total=60)
+    form = aiohttp.FormData()
+    form.add_field("file", audio, filename=filename, content_type="audio/ogg")
+    form.add_field("model", WHISPER_MODEL)
+    form.add_field("language", "ru")
+    headers = {"Authorization": f"Bearer {LLM_API_KEY}"}
+    async with aiohttp.ClientSession(timeout=timeout) as session:
+        async with session.post(
+            f"{LLM_BASE_URL}/audio/transcriptions", data=form, headers=headers
+        ) as resp:
+            data = await resp.json(content_type=None)
+    if not isinstance(data, dict) or "text" not in data:
+        err = data.get("error", data) if isinstance(data, dict) else data
+        raise RuntimeError(f"Whisper error: {err}")
+    return (data["text"] or "").strip()
+
+
 def friendly_error(e: Exception, action: str = "обработать запрос") -> str:
     """Человекочитаемое сообщение об ошибке LLM (без трейсбеков)."""
     if isinstance(e, LLMRateLimitError) or "429" in str(e):
@@ -128,23 +150,35 @@ def parse_llm_json(text: str) -> dict:
 
 ROUTER_PROMPT = """Ты — модуль-маршрутизатор Telegram-бота «Личный Ассистент Дня».
 Сейчас: {now} ({tz}).
+
+Текущее состояние пользователя:
+Открытые задачи (id: текст): {tasks}
+Список покупок (id: товар): {shopping}
+
 Определи намерение пользователя и верни СТРОГО один JSON без пояснений:
-{{"intent": "task" | "recipes" | "expense" | "shopping" | "fridge" | "chat",
+{{"intent": "task" | "complete_task" | "delete_task" | "recipes" | "expense" | "delete_expense" | "shopping" | "remove_shopping" | "fridge" | "chat",
   "task_text": "суть задачи без слов 'напомни' и без времени" | null,
   "remind_at": "YYYY-MM-DDTHH:MM" | null,
+  "repeat": "daily" | "weekly" | "monthly" | null,
+  "task_id": число | null,
   "products": ["продукт", ...] | null,
   "expense_item": "на что потратил" | null,
   "expense_amount": число | null,
   "shopping_items": ["что купить", ...] | null,
+  "shopping_ids": [число, ...] | null,
   "fridge_items": [{{"product": "название", "expires_at": "YYYY-MM-DD" | ""}}, ...] | null,
   "reply": "ответ, если intent=chat" | null}}
 Правила:
-- "task": пользователь хочет добавить дело или напоминание. Если указано время — заполни remind_at в будущем относительно текущего момента («завтра в 9», «через 20 минут»).
-- "recipes": пользователь перечисляет продукты и спрашивает, что приготовить (или явно просит рецепт). Заполни products.
-- "expense": пользователь сообщает о трате («кофе 250», «потратил 1200 на бензин»). Заполни expense_item и expense_amount.
-- "shopping": пользователь просит добавить в список покупок («купить молоко», «добавь хлеб в список»). Заполни shopping_items.
-- "fridge": пользователь сообщает, что положил/у него есть продукты дома («в холодильнике курица до 25 июля», «купил молоко, срок до пятницы»). Заполни fridge_items, дату переведи в YYYY-MM-DD (или "" если срок не указан).
-- "chat": всё остальное — дай короткий полезный ответ на русском в поле reply.
+- "task": добавить дело или напоминание. Если указано время — заполни remind_at в будущем относительно текущего момента («завтра в 9», «через 20 минут»). Если пользователь просит напоминать регулярно («каждый день», «каждую неделю/каждый понедельник», «каждый месяц») — заполни repeat и remind_at первым срабатыванием.
+- "complete_task": пользователь говорит, что задача сделана («позвонил маме», «задача про отчёт готова»). Найди её в списке открытых задач и верни task_id. Если не нашёл — intent=chat.
+- "delete_task": пользователь просит удалить/отменить задачу («убери задачу про отчёт»). Верни task_id из списка.
+- "recipes": пользователь перечисляет продукты и спрашивает, что приготовить. Заполни products.
+- "expense": трата («кофе 250», «потратил 1200 на бензин»). Заполни expense_item и expense_amount.
+- "delete_expense": пользователь просит удалить последнюю трату («удали последнюю трату», «я ошибся с тратой»).
+- "shopping": добавить в список покупок («купить молоко»). Заполни shopping_items.
+- "remove_shopping": убрать из списка покупок («убери молоко из списка», «молоко уже купил»). Верни shopping_ids из списка.
+- "fridge": продукты дома («в холодильнике курица до 25 июля»). Заполни fridge_items, дату в YYYY-MM-DD (или "").
+- "chat": всё остальное — короткий полезный ответ на русском в reply. Учитывай контекст предыдущих сообщений диалога.
 Если фраза похожа и на recipes, и на fridge: «что приготовить» → recipes, «запомни/добавь в холодильник» → fridge."""
 
 RECIPES_PROMPT = """Ты — опытный повар. Из этих продуктов предложи 2–3 рецепта: {products}.
