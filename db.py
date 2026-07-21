@@ -477,11 +477,18 @@ def add_history(chat_id: int, role: str, content: str) -> None:
             (chat_id, role, content[:1000], now_iso()),
         )
         # держим только последние 20 записей на чат
-        c.execute(
-            "DELETE FROM chat_history WHERE chat_id = ? AND id NOT IN "
-            "(SELECT id FROM chat_history WHERE chat_id = ? ORDER BY id DESC LIMIT 20)",
-            (chat_id, chat_id),
-        )
+        # (MariaDB не поддерживает LIMIT внутри IN-подзапроса, поэтому
+        # сначала находим границу, потом удаляем всё, что старше)
+        rows = c.execute(
+            "SELECT id FROM chat_history WHERE chat_id = ? ORDER BY id DESC LIMIT 20",
+            (chat_id,),
+        ).fetchall()
+        if len(rows) == 20:
+            min_id = rows[-1]["id"]
+            c.execute(
+                "DELETE FROM chat_history WHERE chat_id = ? AND id < ?",
+                (chat_id, min_id),
+            )
 
 
 def get_history(chat_id: int, limit: int = 10) -> list[dict]:
