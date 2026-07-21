@@ -41,7 +41,55 @@ async def get_weather(city: str) -> str | None:
 
 # ---------------------------------------------------------------------------
 # Новости (простой парсинг RSS без сторонних библиотек)
+# Двойной фильтр: блок-лист по словам + LLM отбирает только добрые новости.
 # ---------------------------------------------------------------------------
+
+# Война, политика, криминал, катастрофы — такому не место в милом боте
+_NEWS_BLOCKLIST = re.compile(
+    r"убил|убий|погиб|смерт|умер|умир|войн|обстрел|ракет|дрон|бпла|взрыв|теракт"
+    r"|днр|лнр|сво\b|фронт|мобилиз|санкци|арест|задерж|суд|приговор|тюрьм|колони"
+    r"|авари|катастроф|крушени|пожар|наводнени|землетрясени|эпидеми|вирус"
+    r"|путин|зеленск|трамп|байден|нато|кремл|минобороны|всу\b|госдум|депутат"
+    r"|атак|удар|ранен|жертв|росгвард|уголовн|мошенн|насил|избил|стрельб"
+    r"|оруж|бомб|штурм|плен|гранат|мигрант|протест|митинг|оппозици|выбор",
+    re.I,
+)
+
+
+def _clean_titles(titles: list[str]) -> list[str]:
+    """Убирает дубли и всё, что попало в блок-лист."""
+    seen: set[str] = set()
+    out = []
+    for t in titles:
+        t = t.strip()
+        if not t or t.lower() in seen or _NEWS_BLOCKLIST.search(t):
+            continue
+        seen.add(t.lower())
+        out.append(t)
+    return out
+
+
+async def _pick_positive(titles: list[str]) -> list[str]:
+    """LLM выбирает только добрые/интересные заголовки. При сбое — первые N."""
+    from llm import llm, parse_llm_json
+
+    numbered = "\n".join(f"{i}. {t}" for i, t in enumerate(titles))
+    prompt = (
+        "Вот заголовки новостей:\n" + numbered + "\n\n"
+        f"Выбери до {NEWS_COUNT} самых добрых и интересных: наука, космос, "
+        "животные, культура, технологии, спорт, забавные истории. "
+        "СТРОГО исключи: политику, войну, криминал, катастрофы, смерти, "
+        "происшествия, экономические угрозы. Если подходящих нет — пустой список.\n"
+        'Ответ СТРОГО одним JSON: {"pick": [номера]}'
+    )
+    try:
+        data = parse_llm_json(await llm([{"role": "user", "content": prompt}]))
+        picked = [titles[i] for i in data.get("pick", []) if isinstance(i, int) and 0 <= i < len(titles)]
+        return picked[:NEWS_COUNT]
+    except Exception as e:
+        log.warning("news LLM filter failed: %s", e)
+        return titles[:NEWS_COUNT]
+
 
 async def get_news() -> list[str]:
     if not NEWS_RSS_URL:
@@ -51,8 +99,11 @@ async def get_news() -> list[str]:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(NEWS_RSS_URL) as resp:
                 xml = await resp.text()
-        titles = re.findall(r"<item>.*?<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>", xml, flags=re.S)
-        return [t.strip() for t in titles[:NEWS_COUNT] if t.strip()]
+        raw = re.findall(r"<item>.*?<title>(?:<!\[CDATA\[)?(.*?)(?:\]\]>)?</title>", xml, flags=re.S)
+        titles = _clean_titles(raw[:30])
+        if not titles:
+            return []
+        return await _pick_positive(titles)
     except Exception as e:
         log.warning("news failed: %s", e)
         return []
