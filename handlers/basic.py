@@ -5,9 +5,16 @@ from pathlib import Path
 
 from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import FSInputFile, Message
+from aiogram.types import (
+    FSInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+    WebAppInfo,
+)
 
 import db as store
+from config import WEBAPP_URL
 from handlers.keyboards import main_menu
 from handlers.life import mood_keyboard
 from services import build_digest, build_evening, get_weather
@@ -47,6 +54,24 @@ async def cmd_start(message: Message) -> None:
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
     await message.answer(HELP_TEXT, reply_markup=main_menu(), parse_mode="HTML")
+
+
+@router.message(Command("app"))
+async def cmd_app(message: Message) -> None:
+    if not WEBAPP_URL:
+        await message.answer(
+            "Мини-апп не настроен: задай WEBAPP_URL в .env (публичный HTTPS-адрес сервера бота)."
+        )
+        return
+    await message.answer(
+        "<b>Мини-апп</b> — всё в одном экране: задачи, покупки, холодильник, привычки и расходы.",
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text="🚀 Открыть мини-апп", web_app=WebAppInfo(url=WEBAPP_URL))]
+            ]
+        ),
+    )
 
 
 @router.message(Command("city"))

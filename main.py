@@ -20,12 +20,13 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
-from aiogram.types import BotCommand
+from aiogram.types import BotCommand, MenuButtonWebApp, WebAppInfo
 
-from config import BOT_TOKEN, LLM_API_KEY
+from config import BOT_TOKEN, LLM_API_KEY, WEBAPP_URL
 from db import init_db
 from handlers import build_router
 from scheduler import background_loop
+from webapp import start_webapp
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("bot")
@@ -49,9 +50,16 @@ async def main() -> None:
             BotCommand(command="digest", description="Утренний брифинг"),
             BotCommand(command="evening", description="Итог дня"),
             BotCommand(command="mood", description="Дневник настроения"),
+            BotCommand(command="app", description="Мини-апп"),
             BotCommand(command="help", description="Справка"),
         ]
     )
+    # Кнопка мини-аппа слева от поля ввода (если задан публичный HTTPS-адрес)
+    if WEBAPP_URL:
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(text="Мини-апп", web_app=WebAppInfo(url=WEBAPP_URL))
+        )
+    web_runner = await start_webapp()
     dp = Dispatcher()
     dp.include_router(build_router())
     loop_task = asyncio.create_task(background_loop(bot))
@@ -60,6 +68,7 @@ async def main() -> None:
         await dp.start_polling(bot)
     finally:
         loop_task.cancel()
+        await web_runner.cleanup()
 
 
 if __name__ == "__main__":

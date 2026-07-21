@@ -29,3 +29,10 @@ NEWS_COUNT = int(os.getenv("NEWS_COUNT", "3"))
 
 TZ = ZoneInfo(os.getenv("TZ_NAME", "Europe/Moscow"))
 DB_PATH = os.getenv("DB_PATH", "assistant.db")
+
+# Мини-апп (Telegram Mini App).
+# WEBAPP_URL — публичный HTTPS-адрес встроенного веб-сервера бота
+# (например, https://mybot.example.com). Если не задан, кнопка мини-аппа
+# не показывается, но сервер всё равно поднимается на WEB_PORT.
+WEBAPP_URL = os.getenv("WEBAPP_URL", "").rstrip("/")
+WEB_PORT = int(os.getenv("WEB_PORT", os.getenv("SERVER_PORT", os.getenv("PORT", "8080"))))
