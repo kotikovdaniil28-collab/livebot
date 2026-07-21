@@ -5,6 +5,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 import db as store
+from handlers.cb_utils import safe_answer
 
 router = Router()
 
@@ -50,9 +51,9 @@ async def cmd_list(message: Message) -> None:
 async def cb_shop_del(callback: CallbackQuery) -> None:
     item_id = int(callback.data.split(":")[2])
     if not store.remove_shopping(callback.message.chat.id, item_id):
-        await callback.answer("Позиция уже вычеркнута", show_alert=True)
+        await safe_answer(callback, "Позиция уже вычеркнута", show_alert=True)
         return
-    await callback.answer("Вычеркнуто ✔️")
+    await safe_answer(callback, "Вычеркнуто ✔️")
     text, kb = shopping_view(callback.message.chat.id)
     try:
         await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -63,7 +64,7 @@ async def cb_shop_del(callback: CallbackQuery) -> None:
 @router.callback_query(F.data == "shop:clear")
 async def cb_shop_clear(callback: CallbackQuery) -> None:
     n = store.clear_shopping(callback.message.chat.id)
-    await callback.answer(f"Очищено ({n} поз.)")
+    await safe_answer(callback, f"Очищено ({n} поз.)")
     try:
         await callback.message.edit_text("🛒 Список пуст. Напиши: «купить молоко и хлеб»")
     except Exception:
@@ -142,9 +143,9 @@ async def cmd_unjoin(message: Message) -> None:
 async def cb_missing(callback: CallbackQuery) -> None:
     items = store.pop_pending(callback.message.chat.id)
     if not items:
-        await callback.answer("Список уже добавлен или устарел", show_alert=True)
+        await safe_answer(callback, "Список уже добавлен или устарел", show_alert=True)
         return
     added = store.add_shopping(callback.message.chat.id, items)
-    await callback.answer(f"Добавлено: {added} поз. ✅")
+    await safe_answer(callback, f"Добавлено: {added} поз. ✅")
     text, kb = shopping_view(callback.message.chat.id)
     await callback.message.answer(text, reply_markup=kb, parse_mode="HTML")

@@ -9,6 +9,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 import db as store
+from handlers.cb_utils import safe_answer
 from config import TZ
 
 router = Router()
@@ -88,9 +89,9 @@ async def cmd_delhabit(message: Message, command: CommandObject) -> None:
 async def cb_habit(callback: CallbackQuery) -> None:
     habit_id = int(callback.data.split(":")[1])
     if not store.log_habit(callback.message.chat.id, habit_id):
-        await callback.answer("Привычка не найдена", show_alert=True)
+        await safe_answer(callback, "Привычка не найдена", show_alert=True)
         return
-    await callback.answer("Отмечено ✅")
+    await safe_answer(callback, "Отмечено ✅")
     kb = habits_keyboard(callback.message.chat.id)
     if kb:
         try:
@@ -143,7 +144,7 @@ async def cb_mood(callback: CallbackQuery) -> None:
     score = int(callback.data.split(":")[1])
     store.set_mood(callback.message.chat.id, score)
     reply = next((v for k, v in MOOD_REPLIES.items() if score in k), "Записал!")
-    await callback.answer(f"Оценка {score}/10 записана")
+    await safe_answer(callback, f"Оценка {score}/10 записана")
     try:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:

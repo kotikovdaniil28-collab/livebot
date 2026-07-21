@@ -8,6 +8,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 import db as store
+from handlers.cb_utils import safe_answer
 from config import TZ
 
 router = Router()
@@ -55,9 +56,9 @@ async def cmd_tasks(message: Message) -> None:
 async def cb_task_done(callback: CallbackQuery) -> None:
     task_id = int(callback.data.split(":")[2])
     if not store.complete_task(callback.message.chat.id, task_id):
-        await callback.answer("Задача уже закрыта", show_alert=True)
+        await safe_answer(callback, "Задача уже закрыта", show_alert=True)
         return
-    await callback.answer("Выполнено ✅")
+    await safe_answer(callback, "Выполнено ✅")
     text, kb = tasks_view(callback.message.chat.id)
     try:
         await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -76,10 +77,10 @@ async def cb_task_snooze(callback: CallbackQuery) -> None:
             (new_str, int(task_id), callback.message.chat.id),
         )
     if cur.rowcount == 0:
-        await callback.answer("Задача уже закрыта", show_alert=True)
+        await safe_answer(callback, "Задача уже закрыта", show_alert=True)
         return
     human = new_time.strftime("%d.%m %H:%M")
-    await callback.answer(f"Отложено до {human} ⏰")
+    await safe_answer(callback, f"Отложено до {human} ⏰")
     try:
         await callback.message.edit_text(
             callback.message.text + f"\n\n⏰ Отложено до {human}", reply_markup=None

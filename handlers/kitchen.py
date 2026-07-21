@@ -8,6 +8,7 @@ from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 import db as store
+from handlers.cb_utils import safe_answer
 from handlers.shopping import missing_keyboard
 from llm import MENU_PROMPT, RECIPES_PROMPT, VISION_PROMPT, friendly_error, llm, parse_llm_json
 
@@ -115,9 +116,9 @@ def fridge_view(chat_id: int) -> tuple[str, InlineKeyboardMarkup | None]:
 async def cb_fridge_del(callback: CallbackQuery) -> None:
     item_id = int(callback.data.split(":")[2])
     if not store.remove_fridge(callback.message.chat.id, item_id):
-        await callback.answer("Позиция уже убрана", show_alert=True)
+        await safe_answer(callback, "Позиция уже убрана", show_alert=True)
         return
-    await callback.answer("Убрано ❌")
+    await safe_answer(callback, "Убрано ❌")
     text, kb = fridge_view(callback.message.chat.id)
     try:
         await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
@@ -129,9 +130,9 @@ async def cb_fridge_del(callback: CallbackQuery) -> None:
 async def cb_fridge_cook(callback: CallbackQuery) -> None:
     products = [i["product"] for i in store.get_fridge(callback.message.chat.id)]
     if not products:
-        await callback.answer("Холодильник пуст", show_alert=True)
+        await safe_answer(callback, "Холодильник пуст", show_alert=True)
         return
-    await callback.answer()
+    await safe_answer(callback)
     await send_recipes(callback.message, products)
 
 
