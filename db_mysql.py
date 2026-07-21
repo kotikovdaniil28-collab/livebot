@@ -16,7 +16,18 @@ from config import MYSQL_URL
 
 
 def _conn_params() -> dict:
-    u = urlparse(MYSQL_URL)
+    # Терпимость к опечаткам в .env: берём часть строки от "mysql://",
+    # даже если в значение случайно попало что-то вроде "DATABASE_URL=mysql://..."
+    raw = MYSQL_URL.strip().strip('"').strip("'")
+    m = re.search(r"mysql://\S+", raw)
+    if m:
+        raw = m.group(0)
+    u = urlparse(raw)
+    if not u.hostname:
+        raise ValueError(
+            f"MYSQL_URL не распознан: {raw!r}. "
+            "Нужен формат: mysql://user:password@host:3306/dbname"
+        )
     return dict(
         host=u.hostname or "localhost",
         port=u.port or 3306,
