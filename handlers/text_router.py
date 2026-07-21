@@ -41,7 +41,13 @@ async def process_text(message: Message, text: str) -> None:
         messages += store.get_history(chat_id, limit=8)
         messages.append({"role": "user", "content": text})
         raw = await llm(messages)
-        data = parse_llm_json(raw)
+        try:
+            data = parse_llm_json(raw)
+        except Exception:
+            # Запасная модель иногда отвечает обычным текстом вместо JSON —
+            # не считаем это ошибкой, а отдаём ответ как обычную болтовню
+            log.warning("LLM вернул не-JSON, использую как chat-ответ: %.100s", raw)
+            data = {"intent": "chat", "reply": raw.strip()}
     except LLMRateLimitError:
         await message.answer(
             "⏳ <b>Слишком много запросов подряд</b>\n\n"
