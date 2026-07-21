@@ -29,6 +29,9 @@ NEWS_COUNT = int(os.getenv("NEWS_COUNT", "3"))
 
 TZ = ZoneInfo(os.getenv("TZ_NAME", "Europe/Moscow"))
 DB_PATH = os.getenv("DB_PATH", "assistant.db")
+# Постоянная база MySQL/MariaDB вместо SQLite-файла.
+# Формат: mysql://user:password@host:3306/dbname
+MYSQL_URL = os.getenv("MYSQL_URL", "")
 
 # Мини-апп (Telegram Mini App).
 # WEBAPP_URL — публичный HTTPS-адрес встроенного веб-сервера бота

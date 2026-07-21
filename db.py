@@ -1,13 +1,25 @@
-"""SQLite: схема и все функции работы с базой."""
+"""Схема и все функции работы с базой.
+
+По умолчанию SQLite (файл assistant.db). Если в .env задан MYSQL_URL —
+используется MySQL/MariaDB: база живёт на сервере хостинга, и данные
+не пропадают при перезапуске или переносе бота.
+"""
 
 import json
 import sqlite3
 from datetime import datetime
 
-from config import DB_PATH, TZ
+from config import DB_PATH, MYSQL_URL, TZ
+
+USE_MYSQL = bool(MYSQL_URL)
+
+if USE_MYSQL:
+    import db_mysql
 
 
-def db() -> sqlite3.Connection:
+def db():
+    if USE_MYSQL:
+        return db_mysql.connect()
     conn = sqlite3.connect(DB_PATH)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
@@ -101,23 +113,32 @@ def init_db() -> None:
             """
         )
     # миграция старой базы (добавляем недостающие колонки, если бот обновился)
-    with db() as c:
-        cols = {r["name"] for r in c.execute("PRAGMA table_info(users)")}
-        if "evening_time" not in cols:
-            c.execute("ALTER TABLE users ADD COLUMN evening_time TEXT DEFAULT '21:00'")
-        if "last_evening" not in cols:
-            c.execute("ALTER TABLE users ADD COLUMN last_evening TEXT DEFAULT ''")
-        if "list_owner" not in cols:
-            c.execute("ALTER TABLE users ADD COLUMN list_owner INTEGER DEFAULT 0")
-        if "budget" not in cols:
-            c.execute("ALTER TABLE users ADD COLUMN budget REAL DEFAULT 0")
-        if "budget_warned" not in cols:
-            c.execute("ALTER TABLE users ADD COLUMN budget_warned TEXT DEFAULT ''")
-        tcols = {r["name"] for r in c.execute("PRAGMA table_info(tasks)")}
-        if "done_at" not in tcols:
-            c.execute("ALTER TABLE tasks ADD COLUMN done_at TEXT DEFAULT ''")
-        if "repeat" not in tcols:
-            c.execute("ALTER TABLE tasks ADD COLUMN repeat TEXT DEFAULT ''")
+    _migrations = [
+        ("users", "evening_time", "TEXT DEFAULT '21:00'"),
+        ("users", "last_evening", "TEXT DEFAULT ''"),
+        ("users", "list_owner", "INTEGER DEFAULT 0"),
+        ("users", "budget", "REAL DEFAULT 0"),
+        ("users", "budget_warned", "TEXT DEFAULT ''"),
+        ("tasks", "done_at", "TEXT DEFAULT ''"),
+        ("tasks", "repeat", "TEXT DEFAULT ''"),
+    ]
+    if USE_MYSQL:
+        with db() as c:
+            for table, col, decl in _migrations:
+                exists = c.execute(
+                    "SELECT 1 FROM information_schema.columns "
+                    "WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?",
+                    (table, col),
+                ).fetchone()
+                if not exists:
+                    decl = decl.replace("TEXT", "VARCHAR(1000)").replace("INTEGER", "BIGINT")
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
+    else:
+        with db() as c:
+            for table, col, decl in _migrations:
+                cols = {r["name"] for r in c.execute(f"PRAGMA table_info({table})")}
+                if col not in cols:
+                    c.execute(f"ALTER TABLE {table} ADD COLUMN {col} {decl}")
 
 
 # --- users -----------------------------------------------------------------
