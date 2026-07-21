@@ -176,6 +176,7 @@ async def start_webapp() -> web.AppRunner:
     app = web.Application()
     app.router.add_get("/", _index)
     app.router.add_post("/api", _api)
+    app.router.add_post("/api/", _api)  # прокси Vercel добавляет слэш в конце
     runner = web.AppRunner(app)
     await runner.setup()
     site = web.TCPSite(runner, "0.0.0.0", WEB_PORT)
