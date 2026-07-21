@@ -23,18 +23,37 @@ function findPython() {
 	return null;
 }
 
-// Собираем все каталоги site-packages внутри .local и ~/.local.
-function localSitePackages() {
-	const dirs = [];
-	const roots = [path.join(LOCAL_PREFIX, "lib")];
-	if (process.env.HOME) roots.push(path.join(process.env.HOME, ".local", "lib"));
-	for (const libRoot of roots) {
-		if (!fs.existsSync(libRoot)) continue;
-		for (const entry of fs.readdirSync(libRoot)) {
-			const sp = path.join(libRoot, entry, "site-packages");
-			if (fs.existsSync(sp) && !dirs.includes(sp)) dirs.push(sp);
+// Собираем все каталоги site-packages/dist-packages внутри .local и ~/.local.
+// На Debian pip с --prefix кладёт пакеты в <prefix>/local/lib/pythonX.Y/dist-packages,
+// поэтому ищем рекурсивно оба варианта имён на любой глубине.
+function findPackageDirs(root, depth = 4, found = []) {
+	if (depth < 0 || !fs.existsSync(root)) return found;
+	let entries;
+	try {
+		entries = fs.readdirSync(root, { withFileTypes: true });
+	} catch {
+		return found;
+	}
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue;
+		const full = path.join(root, entry.name);
+		if (entry.name === "site-packages" || entry.name === "dist-packages") {
+			if (!found.includes(full)) found.push(full);
+		} else {
+			findPackageDirs(full, depth - 1, found);
 		}
 	}
+	return found;
+}
+
+function localSitePackages() {
+	const dirs = [];
+	const roots = [LOCAL_PREFIX];
+	if (process.env.HOME) {
+		const homeLocal = path.join(process.env.HOME, ".local");
+		if (homeLocal !== LOCAL_PREFIX) roots.push(homeLocal);
+	}
+	for (const root of roots) findPackageDirs(root, 5, dirs);
 	return dirs;
 }
 
