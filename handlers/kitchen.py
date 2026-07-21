@@ -68,7 +68,12 @@ async def send_recipes(message: Message, products: list[str], extra: str = "") -
         raw = await llm(
             [{"role": "user", "content": RECIPES_PROMPT.format(products=", ".join(products), extra=extra_line)}]
         )
-        data = parse_llm_json(raw)
+        try:
+            data = parse_llm_json(raw)
+        except Exception:
+            # Модель ответила не-JSON — покажем как есть, лучше текст, чем ошибка
+            log.warning("recipes JSON parse failed, using raw text")
+            data = {"text": raw.strip().strip("`")}
         text = data.get("text") or raw
         missing = [m for m in (data.get("missing") or []) if isinstance(m, str) and m.strip()]
         kb = None

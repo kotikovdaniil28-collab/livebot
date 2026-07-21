@@ -110,6 +110,16 @@ async def process_text(message: Message, text: str) -> None:
 
     # --- рецепты ---
     if intent == "recipes":
+        dish = data.get("dish")
+        dish = dish.strip() if isinstance(dish, str) else ""
+        if dish:
+            remember(f"[дал рецепт блюда: {dish}]")
+            await send_recipes(
+                message,
+                [dish],
+                extra=f"пользователь просит рецепт конкретного блюда «{dish}»",
+            )
+            return
         products = data.get("products") or []
         if not products:
             products = [i["product"] for i in store.get_fridge(chat_id)]
