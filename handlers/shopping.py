@@ -17,21 +17,58 @@ def missing_keyboard() -> InlineKeyboardMarkup:
     )
 
 
-def shopping_text(chat_id: int) -> str:
+def _short(text: str, limit: int = 25) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def shopping_view(chat_id: int) -> tuple[str, InlineKeyboardMarkup | None]:
     items = store.get_shopping(chat_id)
     if not items:
-        return "🛒 Список покупок пуст. Просто напиши: «купить молоко и хлеб»"
-    lines = ["🛒 Список покупок:"]
+        return "🛒 Список покупок пуст. Просто напиши: «купить молоко и хлеб»", None
+    lines = ["🛒 Список покупок (нажми, чтобы вычеркнуть):"]
+    rows = []
     for i in items:
         lines.append(f"{i['id']}. {i['item']}")
-    lines.append("\nВычеркнуть: /bought НОМЕР • Очистить: /clearlist")
-    return "\n".join(lines)
+        rows.append(
+            [InlineKeyboardButton(text=f"✔️ {_short(i['item'])}", callback_data=f"shop:del:{i['id']}")]
+        )
+    rows.append([InlineKeyboardButton(text="🗑 Очистить весь список", callback_data="shop:clear")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def shopping_text(chat_id: int) -> str:
+    return shopping_view(chat_id)[0]
 
 
 @router.message(Command("list"))
 async def cmd_list(message: Message) -> None:
     store.upsert_user(message.chat.id)
-    await message.answer(shopping_text(message.chat.id))
+    text, kb = shopping_view(message.chat.id)
+    await message.answer(text, reply_markup=kb)
+
+
+@router.callback_query(F.data.startswith("shop:del:"))
+async def cb_shop_del(callback: CallbackQuery) -> None:
+    item_id = int(callback.data.split(":")[2])
+    if not store.remove_shopping(callback.message.chat.id, item_id):
+        await callback.answer("Позиция уже вычеркнута", show_alert=True)
+        return
+    await callback.answer("Вычеркнуто ✔️")
+    text, kb = shopping_view(callback.message.chat.id)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "shop:clear")
+async def cb_shop_clear(callback: CallbackQuery) -> None:
+    n = store.clear_shopping(callback.message.chat.id)
+    await callback.answer(f"Очищено ({n} поз.)")
+    try:
+        await callback.message.edit_text("🛒 Список покупок пуст. Просто напиши: «купить молоко и хлеб»")
+    except Exception:
+        pass
 
 
 @router.message(Command("buy"))
@@ -42,7 +79,8 @@ async def cmd_buy(message: Message, command: CommandObject) -> None:
         return
     items = [s.strip() for s in command.args.replace(";", ",").split(",") if s.strip()]
     added = store.add_shopping(message.chat.id, items)
-    await message.answer(f"Добавил в список: {added} поз. ✅\n\n" + shopping_text(message.chat.id))
+    text, kb = shopping_view(message.chat.id)
+    await message.answer(f"Добавил в список: {added} поз. ✅\n\n" + text, reply_markup=kb)
 
 
 @router.message(Command("bought"))

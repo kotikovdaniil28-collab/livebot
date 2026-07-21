@@ -2,12 +2,13 @@
 
 from aiogram import Router
 
-from handlers import basic, kitchen, life, shopping, tasks, text_router
+from handlers import basic, kitchen, life, menu, shopping, tasks, text_router
 
 
 def build_router() -> Router:
     root = Router()
     root.include_router(basic.router)
+    root.include_router(menu.router)  # кнопки главного меню — до text_router
     root.include_router(tasks.router)
     root.include_router(shopping.router)
     root.include_router(life.router)

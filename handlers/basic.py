@@ -7,6 +7,7 @@ from aiogram.filters import Command, CommandObject, CommandStart
 from aiogram.types import Message
 
 import db as store
+from handlers.keyboards import main_menu
 from handlers.life import mood_keyboard
 from services import build_digest, build_evening, get_weather
 
@@ -40,13 +41,14 @@ async def cmd_start(message: Message) -> None:
     store.upsert_user(message.chat.id)
     await message.answer(
         "Привет! 👋\n\n" + HELP_TEXT + "\n\n"
-        "Начни с настройки: отправь /city Москва и /time 07:30"
+        "Начни с настройки: отправь /city Москва и /time 07:30",
+        reply_markup=main_menu(),
     )
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
-    await message.answer(HELP_TEXT)
+    await message.answer(HELP_TEXT, reply_markup=main_menu())
 
 
 @router.message(Command("city"))

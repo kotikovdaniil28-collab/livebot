@@ -5,7 +5,7 @@ import logging
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 import db as store
 from handlers.shopping import missing_keyboard
@@ -87,21 +87,56 @@ async def cmd_fridge(message: Message, command: CommandObject) -> None:
         else:
             await message.answer("Не нашёл такую позицию. Список — /fridge")
         return
-    items = store.get_fridge(message.chat.id)
+    text, kb = fridge_view(message.chat.id)
+    await message.answer(text, reply_markup=kb)
+
+
+def _short(text: str, limit: int = 25) -> str:
+    return text if len(text) <= limit else text[: limit - 1] + "…"
+
+
+def fridge_view(chat_id: int) -> tuple[str, InlineKeyboardMarkup | None]:
+    items = store.get_fridge(chat_id)
     if not items:
-        await message.answer(
+        return (
             "🧊 Холодильник пуст.\n"
-            "Просто напиши: «в холодильнике курица до 25.07, молоко до пятницы» — я запомню.\n"
-            "Убрать позицию: /fridge НОМЕР • Очистить: /fridge clear"
+            "Просто напиши: «в холодильнике курица до 25.07, молоко до пятницы» — я запомню.",
+            None,
         )
-        return
-    lines = ["🧊 Виртуальный холодильник:"]
+    lines = ["🧊 Виртуальный холодильник (нажми ❌, чтобы убрать):"]
+    rows = []
     for i in items:
         exp = f" — до {i['expires_at'][8:10]}.{i['expires_at'][5:7]}" if i["expires_at"] else ""
         lines.append(f"{i['id']}. {i['product']}{exp}")
-    lines.append("\nЧто приготовить из этого? Напиши: «что приготовить из холодильника»")
-    lines.append("Убрать: /fridge НОМЕР • Очистить: /fridge clear")
-    await message.answer("\n".join(lines))
+        rows.append(
+            [InlineKeyboardButton(text=f"❌ {_short(i['product'])}", callback_data=f"fridge:del:{i['id']}")]
+        )
+    rows.append([InlineKeyboardButton(text="👨‍🍳 Что приготовить из этого?", callback_data="fridge:cook")])
+    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+@router.callback_query(F.data.startswith("fridge:del:"))
+async def cb_fridge_del(callback: CallbackQuery) -> None:
+    item_id = int(callback.data.split(":")[2])
+    if not store.remove_fridge(callback.message.chat.id, item_id):
+        await callback.answer("Позиция уже убрана", show_alert=True)
+        return
+    await callback.answer("Убрано ❌")
+    text, kb = fridge_view(callback.message.chat.id)
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data == "fridge:cook")
+async def cb_fridge_cook(callback: CallbackQuery) -> None:
+    products = [i["product"] for i in store.get_fridge(callback.message.chat.id)]
+    if not products:
+        await callback.answer("Холодильник пуст", show_alert=True)
+        return
+    await callback.answer()
+    await send_recipes(callback.message, products)
 
 
 # --- меню на неделю -------------------------------------------------------------
