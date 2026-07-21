@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Ассистент дня</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root{
+    --bg:#0e1116; --card:#161b23; --card2:#1c2330; --line:#242c3a;
+    --text:#e8ecf2; --dim:#8b96a8; --accent:#4fa3ff; --accent-dim:#1c2f45;
+    --good:#3ecf8e; --warn:#f5a623; --bad:#ef5b5b; --r:14px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{background:var(--bg)}
+  body{
+    font-family:-apple-system,system-ui,'SF Pro Text',Roboto,sans-serif;
+    color:var(--text);font-size:15px;line-height:1.45;
+    padding:12px 12px calc(64px + env(safe-area-inset-bottom));
+    max-width:560px;margin:0 auto;
+  }
+  h2{font-size:13px;font-weight:600;color:var(--dim);text-transform:uppercase;
+     letter-spacing:.06em;margin:18px 2px 8px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+  .row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--line)}
+  .row:last-child{border-bottom:none}
+  .row .grow{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .row .sub{font-size:12px;color:var(--dim)}
+  .chip{font-size:11px;font-weight:600;padding:2px 8px;border-radius:99px;flex-shrink:0}
+  .chip.warn{background:rgba(245,166,35,.14);color:var(--warn)}
+  .chip.bad{background:rgba(239,91,91,.14);color:var(--bad)}
+  .chip.good{background:rgba(62,207,142,.14);color:var(--good)}
+  .chip.dim{background:var(--card2);color:var(--dim)}
+  button{font:inherit;border:none;cursor:pointer;background:none;color:inherit}
+  .act{width:30px;height:30px;border-radius:9px;background:var(--card2);color:var(--dim);
+       display:flex;align-items:center;justify-content:center;flex-shrink:0;
+       font-size:15px;transition:transform .12s ease,background .12s ease}
+  .act:active{transform:scale(.9)}
+  .act.ok{background:var(--accent-dim);color:var(--accent)}
+  .act.done{background:rgba(62,207,142,.14);color:var(--good)}
+  .empty{padding:20px 14px;text-align:center;color:var(--dim);font-size:13px}
+  /* summary strip */
+  .strip{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-top:4px}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+        padding:10px 12px}
+  .stat b{display:block;font-size:20px;font-weight:700;letter-spacing:-.02em}
+  .stat span{font-size:11px;color:var(--dim)}
+  /* add form */
+  .addbar{display:flex;gap:8px;margin-top:8px}
+  .addbar input{flex:1;min-width:0;background:var(--card);border:1px solid var(--line);
+        border-radius:11px;padding:9px 12px;color:var(--text);font:inherit;font-size:14px;outline:none}
+  .addbar input:focus{border-color:var(--accent)}
+  .addbar input::placeholder{color:var(--dim)}
+  .addbar .go{background:var(--accent);color:#0b1220;font-weight:700;border-radius:11px;
+        padding:0 16px;font-size:14px;transition:transform .12s}
+  .addbar .go:active{transform:scale(.95)}
+  .addbar input[type=date]{flex:0 0 108px;font-size:12px}
+  /* tabs */
+  nav{position:fixed;left:0;right:0;bottom:0;background:rgba(14,17,22,.92);
+      backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);
+      border-top:1px solid var(--line);display:flex;justify-content:space-around;
+      padding:6px 4px calc(6px + env(safe-area-inset-bottom));z-index:10}
+  nav button{display:flex;flex-direction:column;align-items:center;gap:2px;
+      color:var(--dim);font-size:10px;font-weight:600;padding:4px 8px;border-radius:10px;min-width:52px}
+  nav button.on{color:var(--accent)}
+  nav button .i{font-size:19px;line-height:1}
+  .page{display:none}.page.on{display:block;animation:fade .18s ease}
+  @keyframes fade{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+  .hdr{display:flex;align-items:baseline;justify-content:space-between;margin:2px 2px 10px}
+  .hdr h1{font-size:19px;font-weight:700;letter-spacing:-.02em}
+  .hdr .sub{font-size:12px;color:var(--dim)}
+  .streak{font-size:12px;color:var(--warn);font-weight:600;flex-shrink:0}
+  .money{font-variant-numeric:tabular-nums;font-weight:600;flex-shrink:0}
+  .clear{width:100%;padding:10px;color:var(--bad);font-size:13px;font-weight:600;
+         border-top:1px solid var(--line)}
+  #err{display:none;padding:24px 16px;text-align:center;color:var(--dim);font-size:14px}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div id="err">Откройте мини-апп из Telegram — кнопка «Мини-апп» в меню бота.</div>
+<div id="app" style="display:none">
+
+  <div class="page on" id="p-home">
+    <div class="hdr"><h1 id="greet">Сегодня</h1><span class="sub" id="date"></span></div>
+    <div class="strip">
+      <div class="stat"><b id="s-tasks">0</b><span>задач открыто</span></div>
+      <div class="stat"><b id="s-habits">0/0</b><span>привычек сегодня</span></div>
+      <div class="stat"><b id="s-spent">0₽</b><span>трат сегодня</span></div>
+    </div>
+    <h2>Ближайшие задачи</h2>
+    <div class="card" id="home-tasks"></div>
+    <h2>Скоро испортится</h2>
+    <div class="card" id="home-fridge"></div>
+  </div>
+
+  <div class="page" id="p-tasks">
+    <div class="hdr"><h1>Задачи</h1><span class="sub" id="t-done"></span></div>
+    <div class="card" id="tasks-list"></div>
+    <form class="addbar" data-act="task_add"><input name="text" placeholder="Новая задача…" maxlength="200" required><button class="go">+</button></form>
+  </div>
+
+  <div class="page" id="p-shop">
+    <div class="hdr"><h1>Покупки</h1><span class="sub" id="sh-count"></span></div>
+    <div class="card" id="shop-list"></div>
+    <form class="addbar" data-act="shop_add"><input name="text" placeholder="Молоко, хлеб…" maxlength="300" required><button class="go">+</button></form>
+  </div>
+
+  <div class="page" id="p-fridge">
+    <div class="hdr"><h1>Холодильник</h1><span class="sub" id="fr-count"></span></div>
+    <div class="card" id="fridge-list"></div>
+    <form class="addbar" data-act="fridge_add">
+      <input name="product" placeholder="Продукт…" maxlength="100" required>
+      <input name="expires" type="date">
+      <button class="go">+</button>
+    </form>
+  </div>
+
+  <div class="page" id="p-life">
+    <div class="hdr"><h1>Привычки</h1><span class="sub" id="hb-count"></span></div>
+    <div class="card" id="habit-list"></div>
+    <form class="addbar" data-act="habit_add"><input name="name" placeholder="Новая привычка…" maxlength="100" required><button class="go">+</button></form>
+    <h2>Расходы</h2>
+    <div class="strip" style="grid-template-columns:1fr 1fr">
+      <div class="stat"><b id="e-today">0₽</b><span>сегодня</span></div>
+      <div class="stat"><b id="e-week">0₽</b><span>за 7 дней</span></div>
+    </div>
+    <div class="card" id="exp-list" style="margin-top:8px"></div>
+    <form class="addbar" data-act="expense_add">
+      <input name="item" placeholder="Кофе…" maxlength="100" required>
+      <input name="amount" type="number" inputmode="decimal" min="1" step="any" placeholder="250" style="flex:0 0 84px" required>
+      <button class="go">+</button>
+    </form>
+  </div>
+</div>
+
+<nav id="nav" style="display:none">
+  <button data-p="home" class="on"><span class="i">🏠</span>Сегодня</button>
+  <button data-p="tasks"><span class="i">📋</span>Задачи</button>
+  <button data-p="shop"><span class="i">🛒</span>Покупки</button>
+  <button data-p="fridge"><span class="i">🧊</span>Холод</button>
+  <button data-p="life"><span class="i">🔁</span>Жизнь</button>
+</nav>
+
+<script>
+(function(){
+  var tg = window.Telegram && Telegram.WebApp;
+  if(!tg || !tg.initData){ document.getElementById('err').style.display='block'; return; }
+  tg.ready(); tg.expand();
+  document.getElementById('app').style.display='block';
+  document.getElementById('nav').style.display='flex';
+  document.getElementById('date').textContent =
+    new Date().toLocaleDateString('ru-RU',{weekday:'short',day:'numeric',month:'long'});
+
+  var D = null;
+  function esc(s){var d=document.createElement('div');d.textContent=s;return d.innerHTML;}
+  function fmt(n){return (Math.round(n*100)/100).toLocaleString('ru-RU');}
+  function haptic(){ try{tg.HapticFeedback.impactOccurred('light');}catch(e){} }
+
+  function api(action, payload){
+    return fetch('/api',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({initData:tg.initData,action:action||'overview',payload:payload||{}})})
+      .then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(d){ D=d; render(); });
+  }
+
+  function rows(el, items, fn, emptyText){
+    el.innerHTML = items.length ? items.map(fn).join('') : '<div class="empty">'+emptyText+'</div>';
+  }
+
+  function render(){
+    if(!D) return;
+    // --- home
+    document.getElementById('s-tasks').textContent = D.tasks.length;
+    var doneH = D.habits.filter(function(h){return h.done;}).length;
+    document.getElementById('s-habits').textContent = doneH+'/'+D.habits.length;
+    document.getElementById('s-spent').textContent = fmt(D.expenses.today)+'₽';
+    rows(document.getElementById('home-tasks'), D.tasks.slice(0,4), taskRow, 'Задач нет — отдыхайте');
+    var expiring = D.fridge.filter(function(f){return f.expiring;});
+    rows(document.getElementById('home-fridge'), expiring.slice(0,4), fridgeRow, 'Всё свежее');
+    // --- tasks
+    document.getElementById('t-done').textContent = D.doneToday ? '✓ '+D.doneToday+' сегодня' : '';
+    rows(document.getElementById('tasks-list'), D.tasks, taskRow, 'Список пуст');
+    // --- shopping
+    document.getElementById('sh-count').textContent = D.shopping.length ? D.shopping.length+' поз.' : '';
+    rows(document.getElementById('shop-list'), D.shopping, function(s){
+      return '<div class="row"><span class="grow">'+esc(s.item)+'</span>'+
+        '<button class="act done" data-a="shop_del" data-id="'+s.id+'">✓</button></div>';
+    }, 'Список пуст');
+    if(D.shopping.length>1){
+      document.getElementById('shop-list').insertAdjacentHTML('beforeend',
+        '<button class="clear" data-a="shop_clear">Очистить всё</button>');
+    }
+    // --- fridge
+    document.getElementById('fr-count').textContent = D.fridge.length ? D.fridge.length+' прод.' : '';
+    rows(document.getElementById('fridge-list'), D.fridge, fridgeRow, 'Холодильник пуст');
+    // --- habits
+    document.getElementById('hb-count').textContent = D.habits.length ? doneH+' из '+D.habits.length : '';
+    rows(document.getElementById('habit-list'), D.habits, function(h){
+      return '<div class="row">'+
+        '<button class="act '+(h.done?'done':'ok')+'" data-a="habit_log" data-id="'+h.id+'">'+(h.done?'✓':'○')+'</button>'+
+        '<span class="grow">'+esc(h.name)+(h.time?' <span class="sub">'+esc(h.time)+'</span>':'')+'</span>'+
+        (h.streak?'<span class="streak">🔥'+h.streak+'</span>':'')+
+        '<button class="act" data-a="habit_del" data-id="'+h.id+'" data-confirm="Удалить привычку?">×</button></div>';
+    }, 'Привычек пока нет');
+    // --- expenses
+    document.getElementById('e-today').textContent = fmt(D.expenses.today)+'₽';
+    document.getElementById('e-week').textContent = fmt(D.expenses.week)+'₽';
+    rows(document.getElementById('exp-list'), D.expenses.recent, function(e){
+      return '<div class="row"><span class="grow">'+esc(e.item)+' <span class="sub">'+esc(e.date)+'</span></span>'+
+        '<span class="money">'+fmt(e.amount)+'₽</span></div>';
+    }, 'Трат пока нет');
+  }
+
+  function taskRow(t){
+    return '<div class="row"><span class="grow">'+esc(t.text)+'</span>'+
+      (t.remind?'<span class="chip dim">'+esc(t.remind)+'</span>':'')+
+      '<button class="act done" data-a="task_done" data-id="'+t.id+'">✓</button></div>';
+  }
+  function fridgeRow(f){
+    var chip = f.expired ? '<span class="chip bad">'+esc(f.expires)+'</span>'
+      : f.expiring ? '<span class="chip warn">'+esc(f.expires)+'</span>'
+      : f.expires ? '<span class="chip dim">'+esc(f.expires)+'</span>' : '';
+    return '<div class="row"><span class="grow">'+esc(f.product)+'</span>'+chip+
+      '<button class="act" data-a="fridge_del" data-id="'+f.id+'">×</button></div>';
+  }
+
+  // навигация
+  document.getElementById('nav').addEventListener('click', function(ev){
+    var b = ev.target.closest('button[data-p]'); if(!b) return;
+    haptic();
+    document.querySelectorAll('nav button').forEach(function(x){x.classList.toggle('on', x===b);});
+    document.querySelectorAll('.page').forEach(function(p){p.classList.toggle('on', p.id==='p-'+b.dataset.p);});
+    window.scrollTo(0,0);
+  });
+
+  // действия по кнопкам
+  document.getElementById('app').addEventListener('click', function(ev){
+    var b = ev.target.closest('[data-a]'); if(!b) return;
+    var run = function(){ haptic(); api(b.dataset.a, {id: b.dataset.id}); };
+    if(b.dataset.confirm){
+      if(tg.showConfirm){ tg.showConfirm(b.dataset.confirm, function(ok){ if(ok) run(); }); }
+      else if(confirm(b.dataset.confirm)){ run(); }
+    } else run();
+  });
+
+  // формы добавления
+  document.querySelectorAll('form[data-act]').forEach(function(f){
+    f.addEventListener('submit', function(ev){
+      ev.preventDefault();
+      var payload = {};
+      new FormData(f).forEach(function(v,k){ payload[k]=v; });
+      haptic();
+      api(f.dataset.act, payload).then(function(){ f.reset(); });
+    });
+  });
+
+  api();
+})();
+</script>
+</body>
+</html>
