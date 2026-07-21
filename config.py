@@ -9,17 +9,17 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
-# Gemini API — OpenAI-совместимый endpoint. Ключ бесплатно: https://aistudio.google.com/apikey
+# Groq API — быстрый и бесплатный. Ключ: https://console.groq.com/keys
 # Можно переопределить LLM_BASE_URL/LLM_MODEL и подключить любой другой OpenAI-совместимый API.
 LLM_API_KEY = (
-    os.getenv("GEMINI_API_KEY", "")
-    or os.getenv("AGENTROUTER_API_KEY", "")
+    os.getenv("GROQ_API_KEY", "")
+    or os.getenv("LLM_API_KEY", "")
     or os.getenv("OPENAI_API_KEY", "")
 )
-LLM_BASE_URL = os.getenv(
-    "LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"
-).rstrip("/")
-LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.groq.com/openai/v1").rstrip("/")
+LLM_MODEL = os.getenv("LLM_MODEL", "llama-3.3-70b-versatile")
+# Модель для разбора фото (vision). У Groq это Llama 4 Scout.
+LLM_VISION_MODEL = os.getenv("LLM_VISION_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
 

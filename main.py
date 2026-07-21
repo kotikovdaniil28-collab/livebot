@@ -36,7 +36,7 @@ async def main() -> None:
     if not BOT_TOKEN:
         raise SystemExit("❌ Не задан BOT_TOKEN — заполни файл .env (см. README.md)")
     if not LLM_API_KEY:
-        raise SystemExit("❌ Не задан GEMINI_API_KEY — заполни файл .env (см. README.md)")
+        raise SystemExit("❌ Не задан GROQ_API_KEY — заполни файл .env (см. README.md)")
     init_db()
     bot = Bot(token=BOT_TOKEN)
     await bot.set_my_commands(

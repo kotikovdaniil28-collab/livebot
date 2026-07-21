@@ -36,7 +36,7 @@ async def on_text(message: Message) -> None:
     except LLMRateLimitError:
         await message.answer(
             "⏳ <b>Слишком много запросов подряд</b>\n\n"
-            "Бесплатный лимит Gemini на минуту исчерпан.\n"
+            "Бесплатный лимит запросов на минуту исчерпан.\n"
             "Подожди минутку и напиши ещё раз 🙏",
             parse_mode="HTML",
         )
