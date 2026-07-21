@@ -1,6 +1,10 @@
 {
   "rewrites": [
     {
+      "source": "/api/:path*",
+      "destination": "http://c12.play2go.cloud:20069/api/:path*"
+    },
+    {
       "source": "/api",
       "destination": "http://c12.play2go.cloud:20069/api"
     }
