@@ -1,10 +1,11 @@
 """Базовые команды: /start, /help, настройки, дайджесты."""
 
 import re
+from pathlib import Path
 
 from aiogram import Router
 from aiogram.filters import Command, CommandObject, CommandStart
-from aiogram.types import Message
+from aiogram.types import FSInputFile, Message
 
 import db as store
 from handlers.keyboards import main_menu
@@ -12,6 +13,10 @@ from handlers.life import mood_keyboard
 from services import build_digest, build_evening, get_weather
 
 router = Router()
+
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+WELCOME_IMG = ASSETS_DIR / "welcome.png"
+FEATURES_IMG = ASSETS_DIR / "features.png"
 
 HELP_TEXT = (
     "🤖 Я — Личный Ассистент Дня. Что умею:\n\n"
@@ -39,15 +44,21 @@ HELP_TEXT = (
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     store.upsert_user(message.chat.id)
+    if WELCOME_IMG.exists():
+        await message.answer_photo(
+            FSInputFile(WELCOME_IMG),
+            caption="Привет! 👋 Я — Личный Ассистент Дня.\nПомогу с задачами, покупками, готовкой и не только.",
+        )
     await message.answer(
-        "Привет! 👋\n\n" + HELP_TEXT + "\n\n"
-        "Начни с настройки: отправь /city Москва и /time 07:30",
+        HELP_TEXT + "\n\nНачни с настройки: отправь /city Москва и /time 07:30",
         reply_markup=main_menu(),
     )
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
+    if FEATURES_IMG.exists():
+        await message.answer_photo(FSInputFile(FEATURES_IMG))
     await message.answer(HELP_TEXT, reply_markup=main_menu())
 
 
