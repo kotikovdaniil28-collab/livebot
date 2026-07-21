@@ -57,8 +57,9 @@ def translate_ddl(sql: str) -> str:
     # chat_id Телеграма не влезает в 32-битный INTEGER MySQL
     sql = re.sub(r"\bINTEGER\b", "BIGINT", sql, flags=re.I)
     # TEXT-колонка не может быть ключом/индексом без длины -> VARCHAR
+    # (имя может быть в \`обратных кавычках\`, напр. \`key\` в notion_meta)
     sql = re.sub(
-        r"(\w+)\s+TEXT\s+PRIMARY KEY", r"\1 VARCHAR(191) PRIMARY KEY", sql, flags=re.I
+        r"(`?\w+`?)\s+TEXT\s+PRIMARY KEY", r"\1 VARCHAR(191) PRIMARY KEY", sql, flags=re.I
     )
     key_cols: set[str] = set()
     for m in _KEY_COLS.finditer(sql):
