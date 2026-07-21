@@ -8,6 +8,7 @@ from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import db as store
+import notion
 from config import TZ
 from handlers.life import mood_keyboard
 from handlers.tasks import reminder_keyboard
@@ -122,6 +123,7 @@ async def _expiry_alerts(bot: Bot, now: datetime) -> None:
 
 
 async def background_loop(bot: Bot) -> None:
+    tick = 0
     while True:
         try:
             now = datetime.now(TZ)
@@ -136,6 +138,10 @@ async def background_loop(bot: Bot) -> None:
             # сроки годности проверяем раз в час, чтобы не спамить LLM
             if now.minute == 0 or now.strftime("%H:%M") == "10:00":
                 await _expiry_alerts(bot, now)
+            # синхронизация с Notion — раз в ~2 минуты (каждый 6-й тик)
+            if notion.enabled() and tick % 6 == 0:
+                await notion.sync()
         except Exception:
             log.exception("background loop error")
+        tick += 1
         await asyncio.sleep(20)
