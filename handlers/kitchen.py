@@ -2,10 +2,17 @@
 
 import base64
 import logging
+from pathlib import Path
 
 from aiogram import Bot, F, Router
 from aiogram.filters import Command, CommandObject
-from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
+from aiogram.types import (
+    CallbackQuery,
+    FSInputFile,
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    Message,
+)
 
 import db as store
 from handlers.cb_utils import safe_answer
@@ -15,6 +22,42 @@ from llm import MENU_PROMPT, RECIPES_PROMPT, VISION_PROMPT, friendly_error, llm,
 log = logging.getLogger("bot.kitchen")
 
 router = Router()
+
+ASSETS_DIR = Path(__file__).resolve().parent.parent / "assets"
+RECIPES_IMG = ASSETS_DIR / "recipes.png"
+MENU_IMG = ASSETS_DIR / "menu_week.png"
+VISION_IMG = ASSETS_DIR / "fridge_scan.png"
+
+_CAPTION_LIMIT = 1024
+
+
+async def _reply_pretty(
+    message: Message,
+    note: Message,
+    text: str,
+    img: Path,
+    kb: InlineKeyboardMarkup | None = None,
+) -> None:
+    """Красивый ответ: HTML-разметка + тематическая картинка, с фолбэком на текст."""
+    try:
+        if img.exists():
+            try:
+                await note.delete()
+            except Exception:
+                pass
+            if len(text) <= _CAPTION_LIMIT:
+                await message.answer_photo(
+                    FSInputFile(img), caption=text, parse_mode="HTML", reply_markup=kb
+                )
+            else:
+                await message.answer_photo(FSInputFile(img))
+                await message.answer(text, parse_mode="HTML", reply_markup=kb)
+        else:
+            await note.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        # LLM мог вернуть кривой HTML — отправляем без разметки
+        log.warning("pretty reply failed, falling back to plain text", exc_info=True)
+        await message.answer(text, reply_markup=kb)
 
 
 async def send_recipes(message: Message, products: list[str], extra: str = "") -> None:
@@ -28,14 +71,12 @@ async def send_recipes(message: Message, products: list[str], extra: str = "") -
         data = parse_llm_json(raw)
         text = data.get("text") or raw
         missing = [m for m in (data.get("missing") or []) if isinstance(m, str) and m.strip()]
+        kb = None
         if missing:
             store.set_pending(message.chat.id, missing)
-            await note.edit_text(
-                text + "\n\n🛒 Докупить: " + ", ".join(missing),
-                reply_markup=missing_keyboard(),
-            )
-        else:
-            await note.edit_text(text)
+            text += "\n\n🛒 <b>Докупить:</b> " + ", ".join(missing)
+            kb = missing_keyboard()
+        await _reply_pretty(message, note, text, RECIPES_IMG, kb)
     except Exception as e:
         log.exception("recipes failed")
         await note.edit_text(friendly_error(e, "подобрать рецепты"))
@@ -59,14 +100,12 @@ async def on_photo(message: Message, bot: Bot) -> None:
         data = parse_llm_json(raw)
         text = data.get("text") or raw
         missing = [m for m in (data.get("missing") or []) if isinstance(m, str) and m.strip()]
+        kb = None
         if missing:
             store.set_pending(message.chat.id, missing)
-            await note.edit_text(
-                text + "\n\n🛒 Докупить: " + ", ".join(missing),
-                reply_markup=missing_keyboard(),
-            )
-        else:
-            await note.edit_text(text)
+            text += "\n\n🛒 <b>Докупить:</b> " + ", ".join(missing)
+            kb = missing_keyboard()
+        await _reply_pretty(message, note, text, VISION_IMG, kb)
     except Exception as e:
         log.exception("photo handler failed")
         await note.edit_text(friendly_error(e, "разобрать фото"))
@@ -153,14 +192,12 @@ async def cmd_menu(message: Message) -> None:
         data = parse_llm_json(raw)
         text = data.get("text") or raw
         shopping = [s for s in (data.get("shopping") or []) if isinstance(s, str) and s.strip()]
+        kb = None
         if shopping:
             store.set_pending(message.chat.id, shopping)
-            await note.edit_text(
-                text + "\n\n🛒 Купить на неделю: " + ", ".join(shopping),
-                reply_markup=missing_keyboard(),
-            )
-        else:
-            await note.edit_text(text)
+            text += "\n\n🛒 <b>Купить на неделю:</b> " + ", ".join(shopping)
+            kb = missing_keyboard()
+        await _reply_pretty(message, note, text, MENU_IMG, kb)
     except Exception as e:
         log.exception("menu failed")
         await note.edit_text(friendly_error(e, "составить меню"))
