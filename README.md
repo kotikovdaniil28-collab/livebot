@@ -19,7 +19,7 @@
 ## Шаг 1. Получи ключи (2 обязательных + 1 по желанию)
 
 1. **Токен бота** — в Telegram найди `@BotFather` → `/newbot` → придумай имя → скопируй токен вида `123456:ABC-DEF...`
-2. **Ключ AgentRouter** — [agentrouter.org](https://agentrouter.org) → войди через GitHub → «Получить API Key» → создай ключ. Новым пользователям дают бесплатные кредиты — карта не нужна. Бот ходит на `https://agentrouter.org/v1` с моделью `gpt-5`
+2. **Ключ Gemini API** — [aistudio.google.com/apikey](https://aistudio.google.com/apikey) → войди через Google-аккаунт → «Create API key». Бесплатно, карта не нужна. Бот использует модель `gemini-2.5-flash` (умеет и текст, и фото)
 3. *(необязательно)* **Ключ погоды** — [openweathermap.org](https://openweathermap.org/api) → бесплатная регистрация → API key. Без него всё работает, просто в брифинге не будет погоды.
 
 ## Шаг 2. Настрой .env
@@ -28,7 +28,7 @@
 
 ```
 BOT_TOKEN=123456:ABC-DEF...
-AGENTROUTER_API_KEY=sk-...
+GEMINI_API_KEY=AIza...
 OPENWEATHER_API_KEY=...
 ```
 
@@ -85,7 +85,7 @@ python3 main.py
 - `main.py` — точка входа (запуск бота и фонового цикла)
 - `config.py` — все настройки из `.env`
 - `db.py` — SQLite: схема и функции (пользователи, задачи, покупки, расходы, привычки, холодильник, настроение)
-- `llm.py` — клиент AgentRouter и промпты
+- `llm.py` — клиент Gemini API (OpenAI-совместимый) и промпты
 - `services.py` — погода, новости, сборка утреннего/вечернего дайджестов
 - `handlers/` — обработчики команд по блокам (basic, tasks, shopping, kitchen, life, text_router)
 - `scheduler.py` — фоновый цикл: напоминания, рассылки, сроки годности
@@ -95,9 +95,9 @@ python3 main.py
 ## Частые проблемы
 
 - **Бот не отвечает** — проверь BOT_TOKEN в `.env` и что бот запущен (в логах есть «Бот запущен»)
-- **Ошибка 401 от LLM** — неверный AGENTROUTER_API_KEY или закончились кредиты — проверь баланс в личном кабинете agentrouter.org
-- **AgentRouter не отвечает / таймаут** — поменяй в `.env` адрес на зеркало: `LLM_BASE_URL=https://co.agentrouter.org/v1`
-- **Отвечает медленно** — gpt-5 «думает» перед ответом; поставь в `.env` более быструю модель: `LLM_MODEL=gpt-5-mini`
+- **Ошибка 401/403 от LLM** — неверный GEMINI_API_KEY — создай новый на aistudio.google.com/apikey
+- **Ошибка 429 от LLM** — исчерпан бесплатный лимит Gemini на минуту/день; бот сам повторяет запрос, но при частых ошибках подожди минуту
+- **Хочу другую модель** — в `.env`: `LLM_MODEL=gemini-2.5-pro` (умнее, медленнее) или любой OpenAI-совместимый API через `LLM_BASE_URL` + `OPENAI_API_KEY`
 - **Нет погоды** — ключ OpenWeatherMap активируется до пары часов после регистрации
 - **Не нужны новости в брифинге** — поставь в `.env` пустое значение: `NEWS_RSS_URL=`
 - **Напоминания приходят не в то время** — проверь TZ_NAME в `.env` (например, Europe/Moscow)

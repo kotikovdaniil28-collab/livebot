@@ -5,10 +5,12 @@ import logging
 from datetime import datetime, timedelta
 
 from aiogram import Bot
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 import db as store
 from config import TZ
 from handlers.life import mood_keyboard
+from handlers.tasks import reminder_keyboard
 from llm import SAVE_PRODUCT_PROMPT, llm
 from services import build_digest, build_evening
 
@@ -26,7 +28,8 @@ async def _task_reminders(bot: Bot, now_str: str) -> None:
         try:
             await bot.send_message(
                 t["chat_id"],
-                f"⏰ Напоминание: {t['text']}\nВыполнено? → /done {t['id']}",
+                f"⏰ Напоминание: {t['text']}",
+                reply_markup=reminder_keyboard(t["id"]),
             )
         except Exception:
             log.exception("task reminder failed chat=%s", t["chat_id"])
@@ -76,9 +79,15 @@ async def _habit_reminders(bot: Bot, hhmm: str, today: str) -> None:
     for h in habits:
         try:
             if not store.habit_done_today(h["id"]):
+                kb = InlineKeyboardMarkup(
+                    inline_keyboard=[
+                        [InlineKeyboardButton(text="✅ Сделано", callback_data=f"habit:{h['id']}")]
+                    ]
+                )
                 await bot.send_message(
                     h["chat_id"],
-                    f"🔁 Напоминание о привычке: {h['name']}\nОтметить: /habits",
+                    f"🔁 Напоминание о привычке: {h['name']}",
+                    reply_markup=kb,
                 )
         except Exception:
             log.exception("habit reminder failed chat=%s", h["chat_id"])

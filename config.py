@@ -9,10 +9,17 @@ load_dotenv()
 
 BOT_TOKEN = os.getenv("BOT_TOKEN", "")
 
-# AgentRouter — OpenAI-совместимый шлюз (agentrouter.org). Тот же формат API, другой base URL.
-LLM_API_KEY = os.getenv("AGENTROUTER_API_KEY", "") or os.getenv("OPENAI_API_KEY", "")
-LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://agentrouter.org/v1").rstrip("/")
-LLM_MODEL = os.getenv("LLM_MODEL", "gpt-5")
+# Gemini API — OpenAI-совместимый endpoint. Ключ бесплатно: https://aistudio.google.com/apikey
+# Можно переопределить LLM_BASE_URL/LLM_MODEL и подключить любой другой OpenAI-совместимый API.
+LLM_API_KEY = (
+    os.getenv("GEMINI_API_KEY", "")
+    or os.getenv("AGENTROUTER_API_KEY", "")
+    or os.getenv("OPENAI_API_KEY", "")
+)
+LLM_BASE_URL = os.getenv(
+    "LLM_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai"
+).rstrip("/")
+LLM_MODEL = os.getenv("LLM_MODEL", "gemini-2.5-flash")
 
 OPENWEATHER_API_KEY = os.getenv("OPENWEATHER_API_KEY", "")
 

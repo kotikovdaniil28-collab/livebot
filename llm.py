@@ -1,29 +1,52 @@
-"""LLM-клиент (AgentRouter, OpenAI-совместимый /v1/chat/completions) и промпты.
+"""LLM-клиент: Gemini API через OpenAI-совместимый endpoint (chat/completions).
 
-Важно: gpt-5 — рассуждающая модель, параметр temperature она не поддерживает
-(кроме значения по умолчанию), поэтому мы его не отправляем.
+Работает с любым OpenAI-совместимым API — управляется через LLM_BASE_URL/LLM_MODEL.
+Vision (фото) передаётся стандартным image_url c data:-URI — Gemini это поддерживает.
 """
 
+import asyncio
 import json
+import logging
 import re
 
 import aiohttp
 
 from config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 
+log = logging.getLogger("bot.llm")
+
+_RETRIES = 3
+
 
 async def llm(messages: list[dict]) -> str:
     headers = {"Authorization": f"Bearer {LLM_API_KEY}"}
     payload = {"model": LLM_MODEL, "messages": messages}
-    timeout = aiohttp.ClientTimeout(total=180)
-    async with aiohttp.ClientSession(timeout=timeout) as session:
-        async with session.post(
-            f"{LLM_BASE_URL}/chat/completions", json=payload, headers=headers
-        ) as resp:
-            data = await resp.json()
-    if "error" in data:
-        raise RuntimeError(f"LLM error: {data['error'].get('message', data['error'])}")
-    return data["choices"][0]["message"]["content"]
+    timeout = aiohttp.ClientTimeout(total=120)
+    last_err: Exception | None = None
+    for attempt in range(1, _RETRIES + 1):
+        try:
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                async with session.post(
+                    f"{LLM_BASE_URL}/chat/completions", json=payload, headers=headers
+                ) as resp:
+                    status = resp.status
+                    data = await resp.json(content_type=None)
+            if status == 429 or status >= 500:
+                raise RuntimeError(f"LLM HTTP {status}")
+            if "error" in data:
+                msg = data["error"].get("message", str(data["error"]))
+                raise RuntimeError(f"LLM error: {msg}")
+            content = data["choices"][0]["message"]["content"]
+            if not content or not content.strip():
+                raise RuntimeError("LLM вернул пустой ответ")
+            return content
+        except (aiohttp.ClientError, asyncio.TimeoutError, RuntimeError, KeyError) as e:
+            last_err = e
+            if attempt < _RETRIES:
+                wait = 2 * attempt
+                log.warning("LLM attempt %d/%d failed (%s), retry in %ds", attempt, _RETRIES, e, wait)
+                await asyncio.sleep(wait)
+    raise RuntimeError(f"LLM недоступен после {_RETRIES} попыток: {last_err}")
 
 
 def parse_llm_json(text: str) -> dict:

@@ -1,12 +1,29 @@
-"""Задачи: /tasks, /done + inline-кнопки «выполнено»."""
+"""Задачи: /tasks, /done + inline-кнопки «выполнено» и «отложить»."""
+
+from datetime import datetime, timedelta
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
 from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message
 
 import db as store
+from config import TZ
 
 router = Router()
+
+
+def reminder_keyboard(task_id: int) -> InlineKeyboardMarkup:
+    """Кнопки под напоминанием: выполнено / отложить."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="✅ Выполнено", callback_data=f"task:done:{task_id}")],
+            [
+                InlineKeyboardButton(text="⏰ +30 мин", callback_data=f"task:snooze:{task_id}:30"),
+                InlineKeyboardButton(text="⏰ +2 часа", callback_data=f"task:snooze:{task_id}:120"),
+                InlineKeyboardButton(text="⏰ Завтра", callback_data=f"task:snooze:{task_id}:1440"),
+            ],
+        ]
+    )
 
 
 def _short(text: str, limit: int = 30) -> str:
@@ -44,6 +61,29 @@ async def cb_task_done(callback: CallbackQuery) -> None:
     text, kb = tasks_view(callback.message.chat.id)
     try:
         await callback.message.edit_text(text, reply_markup=kb)
+    except Exception:
+        pass
+
+
+@router.callback_query(F.data.startswith("task:snooze:"))
+async def cb_task_snooze(callback: CallbackQuery) -> None:
+    _, _, task_id, minutes = callback.data.split(":")
+    new_time = datetime.now(TZ) + timedelta(minutes=int(minutes))
+    new_str = new_time.strftime("%Y-%m-%dT%H:%M")
+    with store.db() as c:
+        cur = c.execute(
+            "UPDATE tasks SET remind_at = ?, reminded = 0 WHERE id = ? AND chat_id = ? AND done = 0",
+            (new_str, int(task_id), callback.message.chat.id),
+        )
+    if cur.rowcount == 0:
+        await callback.answer("Задача уже закрыта", show_alert=True)
+        return
+    human = new_time.strftime("%d.%m %H:%M")
+    await callback.answer(f"Отложено до {human} ⏰")
+    try:
+        await callback.message.edit_text(
+            callback.message.text + f"\n\n⏰ Отложено до {human}", reply_markup=None
+        )
     except Exception:
         pass
 
