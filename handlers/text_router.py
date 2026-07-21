@@ -43,12 +43,12 @@ async def on_text(message: Message) -> None:
     # --- задача / напоминание ---
     if intent == "task" and data.get("task_text"):
         remind_at = data.get("remind_at")
-        task_id = store.add_task(message.chat.id, data["task_text"], remind_at)
+        store.add_task(message.chat.id, data["task_text"], remind_at)
         if remind_at:
-            nice = remind_at.replace("T", " в ")
-            await message.answer(f"✅ Задача {task_id}: «{data['task_text']}»\n⏰ Напомню {nice}")
+            nice = f"{remind_at[8:10]}.{remind_at[5:7]} в {remind_at[11:16]}"
+            await message.answer(f"✅ «{data['task_text']}» — напомню {nice}")
         else:
-            await message.answer(f"✅ Задача {task_id}: «{data['task_text']}»\nСписок — /tasks")
+            await message.answer(f"✅ «{data['task_text']}» — записал")
         return
 
     # --- рецепты ---
@@ -73,18 +73,17 @@ async def on_text(message: Message) -> None:
         store.add_expense(message.chat.id, item, amount)
         rows = store.expenses_since(message.chat.id, store.today())
         total = sum(r["amount"] for r in rows)
-        await message.answer(
-            f"💸 Записал: {item} — {amount:g}\nИтого за сегодня: {total:g} • Подробнее: /spent"
-        )
+        await message.answer(f"💸 {item} — {amount:g} · за сегодня: {total:g}")
         return
 
     # --- список покупок ---
     if intent == "shopping" and data.get("shopping_items"):
         items = [s for s in data["shopping_items"] if isinstance(s, str) and s.strip()]
-        added = store.add_shopping(message.chat.id, items)
-        await message.answer(
-            f"🛒 Добавил в список покупок: {', '.join(items)} ({added} новых)\nПосмотреть: /list"
-        )
+        store.add_shopping(message.chat.id, items)
+        from handlers.shopping import shopping_view
+
+        text, kb = shopping_view(message.chat.id)
+        await message.answer(text, reply_markup=kb, parse_mode="HTML")
         return
 
     # --- виртуальный холодильник ---
@@ -97,9 +96,10 @@ async def on_text(message: Message) -> None:
                 )
                 saved.append(it["product"].strip())
         if saved:
-            await message.answer(
-                f"🧊 Запомнил: {', '.join(saved)}\nПосмотреть холодильник: /fridge"
-            )
+            from handlers.kitchen import fridge_view
+
+            text, kb = fridge_view(message.chat.id)
+            await message.answer(text, reply_markup=kb, parse_mode="HTML")
             return
 
     # --- обычный ответ ---

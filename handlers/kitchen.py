@@ -88,31 +88,27 @@ async def cmd_fridge(message: Message, command: CommandObject) -> None:
             await message.answer("Не нашёл такую позицию. Список — /fridge")
         return
     text, kb = fridge_view(message.chat.id)
-    await message.answer(text, reply_markup=kb)
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
-def _short(text: str, limit: int = 25) -> str:
+def _short(text: str, limit: int = 14) -> str:
     return text if len(text) <= limit else text[: limit - 1] + "…"
 
 
 def fridge_view(chat_id: int) -> tuple[str, InlineKeyboardMarkup | None]:
     items = store.get_fridge(chat_id)
     if not items:
-        return (
-            "🧊 Холодильник пуст.\n"
-            "Просто напиши: «в холодильнике курица до 25.07, молоко до пятницы» — я запомню.",
-            None,
-        )
-    lines = ["🧊 Виртуальный холодильник (нажми ❌, чтобы убрать):"]
-    rows = []
+        return "🧊 Холодильник пуст. Напиши: «в холодильнике курица до 25.07»", None
+    text = f"<b>🧊 Холодильник</b> — {len(items)} поз.\n<i>Нажми, чтобы убрать</i>"
+    btns = []
     for i in items:
-        exp = f" — до {i['expires_at'][8:10]}.{i['expires_at'][5:7]}" if i["expires_at"] else ""
-        lines.append(f"{i['id']}. {i['product']}{exp}")
-        rows.append(
-            [InlineKeyboardButton(text=f"❌ {_short(i['product'])}", callback_data=f"fridge:del:{i['id']}")]
+        exp = f" · {i['expires_at'][8:10]}.{i['expires_at'][5:7]}" if i["expires_at"] else ""
+        btns.append(
+            InlineKeyboardButton(text=f"{_short(i['product'])}{exp}", callback_data=f"fridge:del:{i['id']}")
         )
-    rows.append([InlineKeyboardButton(text="👨‍🍳 Что приготовить из этого?", callback_data="fridge:cook")])
-    return "\n".join(lines), InlineKeyboardMarkup(inline_keyboard=rows)
+    rows = [btns[i : i + 2] for i in range(0, len(btns), 2)]
+    rows.append([InlineKeyboardButton(text="👨‍🍳 Что приготовить?", callback_data="fridge:cook")])
+    return text, InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 @router.callback_query(F.data.startswith("fridge:del:"))
@@ -124,7 +120,7 @@ async def cb_fridge_del(callback: CallbackQuery) -> None:
     await callback.answer("Убрано ❌")
     text, kb = fridge_view(callback.message.chat.id)
     try:
-        await callback.message.edit_text(text, reply_markup=kb)
+        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     except Exception:
         pass
 

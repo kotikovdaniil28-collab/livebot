@@ -46,7 +46,9 @@ async def _morning_digests(bot: Bot, hhmm: str, today: str) -> None:
         ).fetchall()
     for u in users:
         try:
-            await bot.send_message(u["chat_id"], await build_digest(u["chat_id"]))
+            await bot.send_message(
+                u["chat_id"], await build_digest(u["chat_id"]), parse_mode="HTML"
+            )
         except Exception:
             log.exception("morning digest failed chat=%s", u["chat_id"])
         finally:
@@ -62,7 +64,10 @@ async def _evening_digests(bot: Bot, hhmm: str, today: str) -> None:
     for u in users:
         try:
             await bot.send_message(
-                u["chat_id"], build_evening(u["chat_id"]), reply_markup=mood_keyboard()
+                u["chat_id"],
+                build_evening(u["chat_id"]),
+                reply_markup=mood_keyboard(),
+                parse_mode="HTML",
             )
         except Exception:
             log.exception("evening digest failed chat=%s", u["chat_id"])

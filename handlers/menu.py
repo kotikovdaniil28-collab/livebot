@@ -25,21 +25,21 @@ router = Router()
 async def menu_tasks(message: Message) -> None:
     store.upsert_user(message.chat.id)
     text, kb = tasks.tasks_view(message.chat.id)
-    await message.answer(text, reply_markup=kb)
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.message(F.text == BTN_LIST)
 async def menu_list(message: Message) -> None:
     store.upsert_user(message.chat.id)
     text, kb = shopping.shopping_view(message.chat.id)
-    await message.answer(text, reply_markup=kb)
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.message(F.text == BTN_FRIDGE)
 async def menu_fridge(message: Message) -> None:
     store.upsert_user(message.chat.id)
     text, kb = kitchen.fridge_view(message.chat.id)
-    await message.answer(text, reply_markup=kb)
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
 
 
 @router.message(F.text == BTN_HABITS)
@@ -61,17 +61,19 @@ async def menu_weekmenu(message: Message) -> None:
 @router.message(F.text == BTN_DIGEST)
 async def menu_digest(message: Message) -> None:
     store.upsert_user(message.chat.id)
-    await message.answer(await build_digest(message.chat.id))
+    await message.answer(await build_digest(message.chat.id), parse_mode="HTML")
 
 
 @router.message(F.text == BTN_EVENING)
 async def menu_evening(message: Message) -> None:
     store.upsert_user(message.chat.id)
-    await message.answer(build_evening(message.chat.id), reply_markup=life.mood_keyboard())
+    await message.answer(
+        build_evening(message.chat.id), reply_markup=life.mood_keyboard(), parse_mode="HTML"
+    )
 
 
 @router.message(F.text == BTN_HELP)
 async def menu_help(message: Message) -> None:
     from handlers.basic import HELP_TEXT
 
-    await message.answer(HELP_TEXT)
+    await message.answer(HELP_TEXT, parse_mode="HTML")

@@ -19,25 +19,16 @@ WELCOME_IMG = ASSETS_DIR / "welcome.png"
 FEATURES_IMG = ASSETS_DIR / "features.png"
 
 HELP_TEXT = (
-    "🤖 Я — Личный Ассистент Дня. Что умею:\n\n"
-    "📝 Задачи — «напомни завтра в 9 позвонить маме»\n"
-    "📸 Фото холодильника — скажу, что приготовить\n"
-    "🍳 Список продуктов текстом — подберу рецепты\n"
-    "🛒 «купить молоко и хлеб» — добавлю в список покупок\n"
-    "💸 «кофе 250» — запишу трату\n"
-    "🧊 «в холодильнике курица до 25.07» — запомню срок годности\n\n"
-    "Команды:\n"
-    "/tasks — задачи • /done N — закрыть задачу\n"
-    "/list — список покупок • /bought N — вычеркнуть • /clearlist — очистить\n"
-    "/share — код списка • /join КОД — общий список с близким\n"
-    "/spent — расходы за день и неделю\n"
-    "/habit НАЗВАНИЕ [ЧЧ:ММ] — привычка • /habits — отметить\n"
-    "/fridge — виртуальный холодильник\n"
-    "/menu — меню на неделю + список покупок\n"
-    "/digest — утренний брифинг сейчас • /evening — итог дня сейчас\n"
-    "/city ГОРОД — погода • /time ЧЧ:ММ — время брифинга\n"
-    "/eveningtime ЧЧ:ММ — время вечернего итога\n"
-    "/help — эта справка"
+    "<b>Пиши обычными словами — я пойму:</b>\n"
+    "• «напомни завтра в 9 позвонить маме»\n"
+    "• «купить молоко и хлеб»\n"
+    "• «кофе 250» — запишу трату\n"
+    "• «в холодильнике курица до 25.07»\n"
+    "• «курица, картошка» или 📸 фото еды — подберу рецепты\n\n"
+    "<b>Кнопки внизу</b> — задачи, покупки, холодильник и всё остальное.\n\n"
+    "<b>Настройка:</b> /city Москва — погода, /time 07:30 — утренний брифинг, "
+    "/eveningtime 21:00 — вечерний итог\n"
+    "<b>Ещё:</b> /share — общий список покупок на двоих, /mood — дневник настроения"
 )
 
 
@@ -47,19 +38,15 @@ async def cmd_start(message: Message) -> None:
     if WELCOME_IMG.exists():
         await message.answer_photo(
             FSInputFile(WELCOME_IMG),
-            caption="Привет! 👋 Я — Личный Ассистент Дня.\nПомогу с задачами, покупками, готовкой и не только.",
+            caption="<b>Привет! Я — Личный Ассистент Дня</b> 👋",
+            parse_mode="HTML",
         )
-    await message.answer(
-        HELP_TEXT + "\n\nНачни с настройки: отправь /city Москва и /time 07:30",
-        reply_markup=main_menu(),
-    )
+    await message.answer(HELP_TEXT, reply_markup=main_menu(), parse_mode="HTML")
 
 
 @router.message(Command("help"))
 async def cmd_help(message: Message) -> None:
-    if FEATURES_IMG.exists():
-        await message.answer_photo(FSInputFile(FEATURES_IMG))
-    await message.answer(HELP_TEXT, reply_markup=main_menu())
+    await message.answer(HELP_TEXT, reply_markup=main_menu(), parse_mode="HTML")
 
 
 @router.message(Command("city"))
@@ -111,10 +98,12 @@ async def cmd_eveningtime(message: Message, command: CommandObject) -> None:
 @router.message(Command("digest"))
 async def cmd_digest(message: Message) -> None:
     store.upsert_user(message.chat.id)
-    await message.answer(await build_digest(message.chat.id))
+    await message.answer(await build_digest(message.chat.id), parse_mode="HTML")
 
 
 @router.message(Command("evening"))
 async def cmd_evening(message: Message) -> None:
     store.upsert_user(message.chat.id)
-    await message.answer(build_evening(message.chat.id), reply_markup=mood_keyboard())
+    await message.answer(
+        build_evening(message.chat.id), reply_markup=mood_keyboard(), parse_mode="HTML"
+    )

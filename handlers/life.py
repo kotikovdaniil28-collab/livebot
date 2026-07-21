@@ -2,6 +2,7 @@
 
 import re
 from datetime import datetime, timedelta
+from html import escape
 
 from aiogram import F, Router
 from aiogram.filters import Command, CommandObject
@@ -22,8 +23,10 @@ def habits_keyboard(chat_id: int) -> InlineKeyboardMarkup | None:
     rows = []
     for h in habits:
         mark = "✅" if store.habit_done_today(h["id"]) else "⬜"
+        streak = store.habit_streak(h["id"])
+        fire = f" · 🔥{streak}" if streak else ""
         rows.append(
-            [InlineKeyboardButton(text=f"{mark} {h['name']}", callback_data=f"habit:{h['id']}")]
+            [InlineKeyboardButton(text=f"{mark} {h['name']}{fire}", callback_data=f"habit:{h['id']}")]
         )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -57,15 +60,16 @@ async def cmd_habits(message: Message) -> None:
     store.upsert_user(message.chat.id)
     kb = habits_keyboard(message.chat.id)
     if not kb:
-        await message.answer("Привычек пока нет. Добавь: /habit Пить воду 10:00")
+        await message.answer("🔁 Привычек пока нет. Добавь: /habit Пить воду 10:00")
         return
     habits = store.get_habits(message.chat.id)
-    lines = ["🔁 Привычки (нажми, чтобы отметить за сегодня):"]
-    for h in habits:
-        streak = store.habit_streak(h["id"])
-        when = f" ⏰ {h['remind_time']}" if h["remind_time"] else ""
-        lines.append(f"{h['id']}. {h['name']}{when} — отмечено {streak} дн.")
-    await message.answer("\n".join(lines), reply_markup=kb)
+    done = sum(1 for h in habits if store.habit_done_today(h["id"]))
+    await message.answer(
+        f"<b>🔁 Привычки</b> — {done}/{len(habits)} за сегодня\n"
+        "<i>Нажми, чтобы отметить · удалить: /delhabit N</i>",
+        reply_markup=kb,
+        parse_mode="HTML",
+    )
 
 
 @router.message(Command("delhabit"))
@@ -108,14 +112,13 @@ async def cmd_spent(message: Message) -> None:
         return
     today = store.today()
     today_rows = [r for r in rows if r["date"] == today]
-    lines = ["💸 Расходы:"]
+    lines = ["<b>💸 Расходы</b>"]
     if today_rows:
-        lines.append("\nСегодня:")
         for r in today_rows:
-            lines.append(f"  • {r['item']} — {r['amount']:g}")
-        lines.append(f"  Итого за день: {sum(r['amount'] for r in today_rows):g}")
-    lines.append(f"\nЗа 7 дней: {sum(r['amount'] for r in rows):g} ({len(rows)} записей)")
-    await message.answer("\n".join(lines))
+            lines.append(f"• {escape(r['item'])} — <b>{r['amount']:g}</b>")
+        lines.append(f"\nСегодня: <b>{sum(r['amount'] for r in today_rows):g}</b>")
+    lines.append(f"За 7 дней: <b>{sum(r['amount'] for r in rows):g}</b> · {len(rows)} записей")
+    await message.answer("\n".join(lines), parse_mode="HTML")
 
 
 # --- дневник настроения ----------------------------------------------------------
@@ -145,7 +148,7 @@ async def cb_mood(callback: CallbackQuery) -> None:
         await callback.message.edit_reply_markup(reply_markup=None)
     except Exception:
         pass
-    await callback.message.answer(f"📔 День оценён на {score}/10. {reply}\nИстория: /mood")
+    await callback.message.answer(f"📔 {score}/10 — {reply}")
 
 
 @router.message(Command("mood"))
@@ -158,11 +161,11 @@ async def cmd_mood(message: Message) -> None:
             "Или вызови /evening прямо сейчас."
         )
         return
-    lines = ["📔 Дневник настроения (последние дни):"]
+    lines = ["<b>📔 Дневник настроения</b>"]
     for m in moods:
         score = f"{m['score']}/10" if m["score"] else "—"
-        lines.append(f"  {m['date'][8:10]}.{m['date'][5:7]} — {score}")
+        lines.append(f"{m['date'][8:10]}.{m['date'][5:7]} — {score}")
     avg = [m["score"] for m in moods if m["score"]]
     if avg:
-        lines.append(f"\nСредняя оценка: {sum(avg) / len(avg):.1f}/10")
-    await message.answer("\n".join(lines))
+        lines.append(f"\nВ среднем: <b>{sum(avg) / len(avg):.1f}/10</b>")
+    await message.answer("\n".join(lines), parse_mode="HTML")

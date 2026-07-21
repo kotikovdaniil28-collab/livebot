@@ -3,6 +3,7 @@
 import logging
 import re
 from datetime import datetime, timedelta
+from html import escape
 
 import aiohttp
 
@@ -64,21 +65,21 @@ async def get_news() -> list[str]:
 async def build_digest(chat_id: int) -> str:
     user = store.get_user(chat_id)
     now = datetime.now(TZ)
-    lines = [f"☀️ Доброе утро! Сегодня {now.strftime('%d.%m.%Y')}"]
+    lines = [f"<b>☀️ Доброе утро!</b> {now.strftime('%d.%m')}"]
 
     if user and user["city"]:
         weather = await get_weather(user["city"])
         if weather:
-            lines.append(f"🌤 {user['city']}: {weather}")
+            lines.append(f"🌤 {escape(weather)}")
 
     tasks = store.open_tasks(chat_id)
     if tasks:
-        lines.append("\n📋 Задачи:")
+        lines.append("\n<b>📋 Задачи</b>")
         for t in tasks:
-            when = f" ⏰ {t['remind_at'][11:16]}" if t["remind_at"] else ""
-            lines.append(f"  {t['id']}. {t['text']}{when}")
+            when = f" <i>⏰ {t['remind_at'][11:16]}</i>" if t["remind_at"] else ""
+            lines.append(f"• {escape(t['text'])}{when}")
     else:
-        lines.append("\n📋 Открытых задач нет — свободный день!")
+        lines.append("\n📋 Задач нет — свободный день!")
 
     # продукты, у которых скоро выйдет срок годности (2 дня вперёд)
     limit = (now + timedelta(days=2)).strftime("%Y-%m-%d")
@@ -87,21 +88,22 @@ async def build_digest(chat_id: int) -> str:
         if p["expires_at"] and p["expires_at"] <= limit
     ]
     if expiring:
-        lines.append("\n⚠️ Скоро испортится:")
-        for p in expiring:
-            lines.append(f"  • {p['product']} (до {p['expires_at'][8:10]}.{p['expires_at'][5:7]})")
+        names = ", ".join(
+            f"{escape(p['product'])} (до {p['expires_at'][8:10]}.{p['expires_at'][5:7]})"
+            for p in expiring
+        )
+        lines.append(f"\n⚠️ Скоро испортится: {names}")
 
     shopping = store.get_shopping(chat_id)
     if shopping:
-        lines.append(f"\n🛒 В списке покупок: {len(shopping)} поз. — /list")
+        lines.append(f"🛒 В списке покупок: {len(shopping)} поз.")
 
     news = await get_news()
     if news:
-        lines.append("\n📰 Новости:")
+        lines.append("\n<b>📰 Новости</b>")
         for n in news:
-            lines.append(f"  • {n}")
+            lines.append(f"• {escape(n)}")
 
-    lines.append("\nХорошего дня! 🚀")
     return "\n".join(lines)
 
 
@@ -110,30 +112,31 @@ async def build_digest(chat_id: int) -> str:
 # ---------------------------------------------------------------------------
 
 def build_evening(chat_id: int) -> str:
-    lines = ["🌙 Итог дня"]
+    lines = ["<b>🌙 Итог дня</b>"]
 
     done = store.tasks_done_today(chat_id)
     open_ = store.open_tasks(chat_id)
     if done:
-        lines.append(f"\n✅ Выполнено сегодня: {len(done)}")
+        lines.append(f"\n<b>✅ Выполнено: {len(done)}</b>")
         for t in done:
-            lines.append(f"  • {t['text']}")
+            lines.append(f"• {escape(t['text'])}")
     if open_:
-        lines.append(f"\n📋 Переносится на завтра: {len(open_)}")
+        lines.append(f"\n<b>📋 На завтра: {len(open_)}</b>")
         for t in open_:
-            lines.append(f"  • {t['text']}")
+            lines.append(f"• {escape(t['text'])}")
     if not done and not open_:
-        lines.append("\nЗадач сегодня не было — день без суеты 🙂")
+        lines.append("Задач сегодня не было — день без суеты 🙂")
 
+    extras = []
     habits = store.get_habits(chat_id)
     if habits:
-        done_h = [h for h in habits if store.habit_done_today(h["id"])]
-        lines.append(f"\n🔁 Привычки: {len(done_h)}/{len(habits)} за сегодня")
-
+        done_h = sum(1 for h in habits if store.habit_done_today(h["id"]))
+        extras.append(f"🔁 {done_h}/{len(habits)}")
     expenses = store.expenses_since(chat_id, store.today())
     if expenses:
-        total = sum(e["amount"] for e in expenses)
-        lines.append(f"\n💸 Потрачено сегодня: {total:g} — /spent")
+        extras.append(f"💸 {sum(e['amount'] for e in expenses):g}")
+    if extras:
+        lines.append("\n" + " · ".join(extras))
 
-    lines.append("\nКак прошёл день? Оцени от 1 до 10 👇")
+    lines.append("\n<i>Оцени день от 1 до 10</i> 👇")
     return "\n".join(lines)

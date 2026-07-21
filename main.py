@@ -20,6 +20,7 @@ import asyncio
 import logging
 
 from aiogram import Bot, Dispatcher
+from aiogram.types import BotCommand
 
 from config import BOT_TOKEN, LLM_API_KEY
 from db import init_db
@@ -37,6 +38,20 @@ async def main() -> None:
         raise SystemExit("❌ Не задан GEMINI_API_KEY — заполни файл .env (см. README.md)")
     init_db()
     bot = Bot(token=BOT_TOKEN)
+    await bot.set_my_commands(
+        [
+            BotCommand(command="tasks", description="Задачи"),
+            BotCommand(command="list", description="Список покупок"),
+            BotCommand(command="fridge", description="Холодильник"),
+            BotCommand(command="habits", description="Привычки"),
+            BotCommand(command="spent", description="Расходы"),
+            BotCommand(command="menu", description="Меню на неделю"),
+            BotCommand(command="digest", description="Утренний брифинг"),
+            BotCommand(command="evening", description="Итог дня"),
+            BotCommand(command="mood", description="Дневник настроения"),
+            BotCommand(command="help", description="Справка"),
+        ]
+    )
     dp = Dispatcher()
     dp.include_router(build_router())
     loop_task = asyncio.create_task(background_loop(bot))
