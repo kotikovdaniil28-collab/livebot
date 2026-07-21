@@ -6,13 +6,17 @@ SQLite-диалект запросов транслируется в MySQL на 
 не меняется.
 """
 
+import logging
 import re
+import time
 from urllib.parse import unquote, urlparse
 
 import pymysql
 from pymysql.cursors import DictCursor
 
 from config import MYSQL_URL
+
+log = logging.getLogger("bot.db")
 
 
 def _conn_params() -> dict:
@@ -92,7 +96,23 @@ def translate_ddl(sql: str) -> str:
 
 class Connection:
     def __init__(self) -> None:
-        self._conn = pymysql.connect(**_conn_params())
+        # Хостинг иногда на секунды теряет DNS/сеть — пробуем несколько раз,
+        # чтобы бот не падал из-за короткого моргания сети.
+        params = _conn_params()
+        last_err: Exception | None = None
+        for attempt in range(1, 4):
+            try:
+                self._conn = pymysql.connect(**params)
+                return
+            except pymysql.err.OperationalError as e:
+                last_err = e
+                if attempt < 3:
+                    log.warning(
+                        "MySQL connect: попытка %d/3 не удалась (%s), повтор через %dс",
+                        attempt, e, attempt,
+                    )
+                    time.sleep(attempt)
+        raise last_err  # type: ignore[misc]
 
     def execute(self, sql: str, params=()):  # noqa: ANN001
         cur = self._conn.cursor()
