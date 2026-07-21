@@ -16,6 +16,7 @@ from handlers.keyboards import (
     BTN_SPENT,
     BTN_TASKS,
 )
+from handlers.ui import EVENING_IMG, MORNING_IMG, answer_pretty
 from services import build_digest, build_evening
 
 router = Router()
@@ -61,14 +62,14 @@ async def menu_weekmenu(message: Message) -> None:
 @router.message(F.text == BTN_DIGEST)
 async def menu_digest(message: Message) -> None:
     store.upsert_user(message.chat.id)
-    await message.answer(await build_digest(message.chat.id), parse_mode="HTML")
+    await answer_pretty(message, await build_digest(message.chat.id), MORNING_IMG)
 
 
 @router.message(F.text == BTN_EVENING)
 async def menu_evening(message: Message) -> None:
     store.upsert_user(message.chat.id)
-    await message.answer(
-        build_evening(message.chat.id), reply_markup=life.mood_keyboard(), parse_mode="HTML"
+    await answer_pretty(
+        message, build_evening(message.chat.id), EVENING_IMG, life.mood_keyboard()
     )
 
 

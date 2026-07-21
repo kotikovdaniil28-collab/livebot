@@ -10,6 +10,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 import db as store
 from handlers.cb_utils import safe_answer
+from handlers.ui import EXPENSES_IMG, HABITS_IMG, MOOD_IMG, answer_pretty
 from config import TZ
 
 router = Router()
@@ -65,11 +66,12 @@ async def cmd_habits(message: Message) -> None:
         return
     habits = store.get_habits(message.chat.id)
     done = sum(1 for h in habits if store.habit_done_today(h["id"]))
-    await message.answer(
+    await answer_pretty(
+        message,
         f"<b>🔁 Привычки</b> — {done}/{len(habits)} за сегодня\n"
         "<i>Нажми, чтобы отметить · удалить: /delhabit N</i>",
-        reply_markup=kb,
-        parse_mode="HTML",
+        HABITS_IMG,
+        kb,
     )
 
 
@@ -119,7 +121,7 @@ async def cmd_spent(message: Message) -> None:
             lines.append(f"• {escape(r['item'])} — <b>{r['amount']:g}</b>")
         lines.append(f"\nСегодня: <b>{sum(r['amount'] for r in today_rows):g}</b>")
     lines.append(f"За 7 дней: <b>{sum(r['amount'] for r in rows):g}</b> · {len(rows)} записей")
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    await answer_pretty(message, "\n".join(lines), EXPENSES_IMG)
 
 
 # --- дневник настроения ----------------------------------------------------------
@@ -169,4 +171,4 @@ async def cmd_mood(message: Message) -> None:
     avg = [m["score"] for m in moods if m["score"]]
     if avg:
         lines.append(f"\nВ среднем: <b>{sum(avg) / len(avg):.1f}/10</b>")
-    await message.answer("\n".join(lines), parse_mode="HTML")
+    await answer_pretty(message, "\n".join(lines), MOOD_IMG)

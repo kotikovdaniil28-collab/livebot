@@ -6,6 +6,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 import db as store
 from handlers.cb_utils import safe_answer
+from handlers.ui import SHOPPING_IMG, answer_pretty, edit_view
 
 router = Router()
 
@@ -44,7 +45,7 @@ def shopping_text(chat_id: int) -> str:
 async def cmd_list(message: Message) -> None:
     store.upsert_user(message.chat.id)
     text, kb = shopping_view(message.chat.id)
-    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await answer_pretty(message, text, SHOPPING_IMG, kb)
 
 
 @router.callback_query(F.data.startswith("shop:del:"))
@@ -55,20 +56,14 @@ async def cb_shop_del(callback: CallbackQuery) -> None:
         return
     await safe_answer(callback, "Вычеркнуто ✔️")
     text, kb = shopping_view(callback.message.chat.id)
-    try:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    except Exception:
-        pass
+    await edit_view(callback.message, text, kb)
 
 
 @router.callback_query(F.data == "shop:clear")
 async def cb_shop_clear(callback: CallbackQuery) -> None:
     n = store.clear_shopping(callback.message.chat.id)
     await safe_answer(callback, f"Очищено ({n} поз.)")
-    try:
-        await callback.message.edit_text("🛒 Список пуст. Напиши: «купить молоко и хлеб»")
-    except Exception:
-        pass
+    await edit_view(callback.message, "🛒 Список пуст. Напиши: «купить молоко и хлеб»")
 
 
 @router.message(Command("buy"))

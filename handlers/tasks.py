@@ -9,6 +9,7 @@ from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMar
 
 import db as store
 from handlers.cb_utils import safe_answer
+from handlers.ui import TASKS_IMG, answer_pretty, edit_view
 from config import TZ
 
 router = Router()
@@ -49,7 +50,7 @@ def tasks_view(chat_id: int) -> tuple[str, InlineKeyboardMarkup | None]:
 @router.message(Command("tasks"))
 async def cmd_tasks(message: Message) -> None:
     text, kb = tasks_view(message.chat.id)
-    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+    await answer_pretty(message, text, TASKS_IMG, kb)
 
 
 @router.callback_query(F.data.startswith("task:done:"))
@@ -60,10 +61,7 @@ async def cb_task_done(callback: CallbackQuery) -> None:
         return
     await safe_answer(callback, "Выполнено ✅")
     text, kb = tasks_view(callback.message.chat.id)
-    try:
-        await callback.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
-    except Exception:
-        pass
+    await edit_view(callback.message, text, kb)
 
 
 @router.callback_query(F.data.startswith("task:snooze:"))

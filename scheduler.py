@@ -12,6 +12,7 @@ import notion
 from config import TZ
 from handlers.life import mood_keyboard
 from handlers.tasks import reminder_keyboard
+from handlers.ui import EVENING_IMG, EXPIRING_IMG, MORNING_IMG, send_pretty
 from llm import SAVE_PRODUCT_PROMPT, llm
 from services import build_digest, build_evening
 
@@ -67,9 +68,7 @@ async def _morning_digests(bot: Bot, hhmm: str, today: str) -> None:
         ).fetchall()
     for u in users:
         try:
-            await bot.send_message(
-                u["chat_id"], await build_digest(u["chat_id"]), parse_mode="HTML"
-            )
+            await send_pretty(bot, u["chat_id"], await build_digest(u["chat_id"]), MORNING_IMG)
         except Exception:
             log.exception("morning digest failed chat=%s", u["chat_id"])
         finally:
@@ -84,11 +83,8 @@ async def _evening_digests(bot: Bot, hhmm: str, today: str) -> None:
         ).fetchall()
     for u in users:
         try:
-            await bot.send_message(
-                u["chat_id"],
-                build_evening(u["chat_id"]),
-                reply_markup=mood_keyboard(),
-                parse_mode="HTML",
+            await send_pretty(
+                bot, u["chat_id"], build_evening(u["chat_id"]), EVENING_IMG, mood_keyboard()
             )
         except Exception:
             log.exception("evening digest failed chat=%s", u["chat_id"])
@@ -135,7 +131,7 @@ async def _expiry_alerts(bot: Bot, now: datetime) -> None:
                 text += f"\n\n{recipe}"
             except Exception:
                 log.warning("save-product recipe failed, sending plain alert")
-            await bot.send_message(p["chat_id"], text)
+            await send_pretty(bot, p["chat_id"], text, EXPIRING_IMG, parse_mode=None)
         except Exception:
             log.exception("expiry alert failed chat=%s", p["chat_id"])
         finally:

@@ -17,6 +17,7 @@ import db as store
 from config import WEBAPP_URL
 from handlers.keyboards import main_menu
 from handlers.life import mood_keyboard
+from handlers.ui import EVENING_IMG, MORNING_IMG, answer_pretty
 from services import build_digest, build_evening, get_weather
 
 router = Router()
@@ -200,12 +201,10 @@ async def cmd_budget(message: Message, command: CommandObject) -> None:
 @router.message(Command("digest"))
 async def cmd_digest(message: Message) -> None:
     store.upsert_user(message.chat.id)
-    await message.answer(await build_digest(message.chat.id), parse_mode="HTML")
+    await answer_pretty(message, await build_digest(message.chat.id), MORNING_IMG)
 
 
 @router.message(Command("evening"))
 async def cmd_evening(message: Message) -> None:
     store.upsert_user(message.chat.id)
-    await message.answer(
-        build_evening(message.chat.id), reply_markup=mood_keyboard(), parse_mode="HTML"
-    )
+    await answer_pretty(message, build_evening(message.chat.id), EVENING_IMG, mood_keyboard())
