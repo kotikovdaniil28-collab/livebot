@@ -47,13 +47,19 @@ _ON_CONFLICT = re.compile(r"ON CONFLICT\s*\([^)]*\)\s*DO UPDATE SET", re.I)
 _EXCLUDED = re.compile(r"excluded\.(\w+)", re.I)
 
 
+# Колонки, чьи имена — зарезервированные слова MySQL/MariaDB.
+# `repeat` можно экранировать всюду: как SQL-ключевое слово оно тут не встречается.
+# `key` экранируем только в notion_meta, иначе поломаем PRIMARY KEY / ON DUPLICATE KEY.
+_RESERVED_ALWAYS = re.compile(r"(?<![\w`])(repeat)(?![\w`])", re.I)
+
+
 def translate(sql: str) -> str:
     """Запросы: плейсхолдеры и upsert-синтаксис."""
     sql = sql.replace("?", "%s")
     sql = _INSERT_IGNORE.sub("INSERT IGNORE", sql)
     sql = _ON_CONFLICT.sub("ON DUPLICATE KEY UPDATE", sql)
     sql = _EXCLUDED.sub(r"VALUES(\1)", sql)
-    # `key` — зарезервированное слово MySQL (колонка в notion_meta)
+    sql = _RESERVED_ALWAYS.sub(r"`\1`", sql)
     if "notion_meta" in sql:
         sql = re.sub(r"(?<![\w`])key(?![\w`])", "`key`", sql)
     return sql
