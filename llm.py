@@ -1,8 +1,7 @@
-"""LLM-клиент: Groq API (OpenAI-совместимый endpoint chat/completions).
+"""LLM-клиент (OpenAI-совместимые endpoint'ы chat/completions).
 
-Работает с любым OpenAI-совместимым API — управляется через LLM_BASE_URL/LLM_MODEL.
-Vision (фото) передаётся стандартным image_url c data:-URI — модель Llama 4 Scout
-на Groq это поддерживает (LLM_VISION_MODEL).
+Текст: Groq (LLM_MODEL, с быстрой запасной моделью).
+Фото: Gemini через Unity2 (UNITY2_API_KEY), резерв — vision-модель Groq.
 """
 
 import asyncio
@@ -34,16 +33,27 @@ _FALLBACK_MODEL = "llama-3.1-8b-instant"
 def _text_providers() -> list[tuple[str, str, str, int, int]]:
     """Цепочка провайдеров для текста: (base_url, api_key, model, timeout_s, retries).
 
-    Unity2 (Gemini) — основной, но шлюз бывает медленным, поэтому даём ему
-    жёсткий лимит времени и одну попытку: не успел — мгновенно уходим на Groq.
+    Текст (болтовня, задачи, рецепты) — всегда Groq: быстрый и с характером.
     """
     providers: list[tuple[str, str, str, int, int]] = []
-    if UNITY2_API_KEY:
-        providers.append((UNITY2_BASE_URL, UNITY2_API_KEY, UNITY2_MODEL, 12, 1))
     if LLM_API_KEY:
         providers.append((LLM_BASE_URL, LLM_API_KEY, LLM_MODEL, 60, 2))
         if LLM_MODEL != _FALLBACK_MODEL:
             providers.append((LLM_BASE_URL, LLM_API_KEY, _FALLBACK_MODEL, 60, 2))
+    return providers
+
+
+def _vision_providers() -> list[tuple[str, str, str, int, int]]:
+    """Цепочка провайдеров для фото: (base_url, api_key, model, timeout_s, retries).
+
+    Фото разбирает Gemini через Unity2 (отлично распознаёт продукты),
+    резерв — vision-модель Groq (Llama 4 Maverick), если Unity2 недоступен.
+    """
+    providers: list[tuple[str, str, str, int, int]] = []
+    if UNITY2_API_KEY:
+        providers.append((UNITY2_BASE_URL, UNITY2_API_KEY, UNITY2_MODEL, 45, 1))
+    if LLM_API_KEY:
+        providers.append((LLM_BASE_URL, LLM_API_KEY, LLM_VISION_MODEL, 120, 2))
     return providers
 
 
@@ -82,8 +92,7 @@ def _has_image(messages: list[dict]) -> bool:
 
 async def llm(messages: list[dict]) -> str:
     if _has_image(messages):
-        # Фото разбирает vision-модель Groq, запасной для неё нет
-        providers = [(LLM_BASE_URL, LLM_API_KEY, LLM_VISION_MODEL, 120, _RETRIES)]
+        providers = _vision_providers()
     else:
         providers = _text_providers()
 
