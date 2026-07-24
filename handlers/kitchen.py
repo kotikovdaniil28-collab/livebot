@@ -102,7 +102,12 @@ async def on_photo(message: Message, bot: Bot) -> None:
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"}},
         ]
         raw = await llm([{"role": "user", "content": content}])
-        data = parse_llm_json(raw)
+        try:
+            data = parse_llm_json(raw)
+        except Exception:
+            # Модель ответила не-JSON — покажем как есть, лучше текст, чем ошибка
+            log.warning("vision JSON parse failed, using raw text")
+            data = {"text": raw.strip().strip("`")}
         text = data.get("text") or raw
         missing = [m for m in (data.get("missing") or []) if isinstance(m, str) and m.strip()]
         kb = None
