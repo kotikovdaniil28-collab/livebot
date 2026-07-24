@@ -94,16 +94,23 @@ def translate_ddl(sql: str) -> str:
 
 # --- обёртка соединения с интерфейсом sqlite3 ---------------------------------
 
+# Коды MySQL «соединение умерло»: 2006 = server has gone away,
+# 2013 = lost connection during query
+_DEAD_CONN_CODES = {2006, 2013}
+
+
 class Connection:
     def __init__(self) -> None:
+        self._params = _conn_params()
+        self._conn = self._open()
+
+    def _open(self) -> pymysql.connections.Connection:
         # Хостинг иногда на секунды теряет DNS/сеть — пробуем несколько раз,
         # чтобы бот не падал из-за короткого моргания сети.
-        params = _conn_params()
         last_err: Exception | None = None
         for attempt in range(1, 4):
             try:
-                self._conn = pymysql.connect(**params)
-                return
+                return pymysql.connect(**self._params)
             except pymysql.err.OperationalError as e:
                 last_err = e
                 if attempt < 3:
@@ -114,10 +121,32 @@ class Connection:
                     time.sleep(attempt)
         raise last_err  # type: ignore[misc]
 
+    @staticmethod
+    def _is_dead(e: Exception) -> bool:
+        if isinstance(e, pymysql.err.InterfaceError):
+            return True
+        if isinstance(e, pymysql.err.OperationalError):
+            return bool(e.args) and e.args[0] in _DEAD_CONN_CODES
+        return False
+
     def execute(self, sql: str, params=()):  # noqa: ANN001
-        cur = self._conn.cursor()
-        cur.execute(translate(sql), tuple(params))
-        return cur
+        try:
+            cur = self._conn.cursor()
+            cur.execute(translate(sql), tuple(params))
+            return cur
+        except Exception as e:
+            if not self._is_dead(e):
+                raise
+            # Сервер сбросил соединение — переподключаемся и повторяем запрос
+            log.warning("MySQL: соединение потеряно (%s), переподключаюсь", e)
+            try:
+                self._conn.close()
+            except Exception:
+                pass
+            self._conn = self._open()
+            cur = self._conn.cursor()
+            cur.execute(translate(sql), tuple(params))
+            return cur
 
     def executescript(self, script: str) -> None:
         for stmt in script.split(";"):
@@ -134,9 +163,17 @@ class Connection:
             if exc_type is None:
                 self._conn.commit()
             else:
-                self._conn.rollback()
+                # rollback по мёртвому соединению падает сам — не даём ему
+                # заслонить исходную ошибку
+                try:
+                    self._conn.rollback()
+                except Exception:
+                    log.warning("MySQL: rollback не удался (соединение мертво)")
         finally:
-            self._conn.close()
+            try:
+                self._conn.close()
+            except Exception:
+                pass
 
 
 def connect() -> Connection:
